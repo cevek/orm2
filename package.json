@@ -1,0 +1,20 @@
+{
+  "name": "orm2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cevek/orm2.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/cevek/orm2/issues"
+  },
+  "homepage": "https://github.com/cevek/orm2#readme"
+}
