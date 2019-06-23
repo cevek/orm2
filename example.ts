@@ -1,19 +1,10 @@
 export {};
 
-declare const PostId: unique symbol;
-type PostId = typeof PostId & number;
-
-declare const StatId: unique symbol;
-type StatId = typeof StatId & number;
-
-declare const UserId: unique symbol;
-type UserId = typeof UserId & number;
-
-declare const CommentId: unique symbol;
-type CommentId = typeof CommentId & number;
-
-declare const AttachmentId: unique symbol;
-type AttachmentId = typeof AttachmentId & number;
+type PostId = Id<'PostId'>;
+type StatId = Id<'StatId'>;
+type UserId = Id<'UserId'>;
+type CommentId = Id<'CommentId'>;
+type AttachmentId = Id<'AttachmentId'>;
 
 interface Post {
     readonly id: PostId;
@@ -70,11 +61,12 @@ interface Attachment {
     ownerId: UserId;
     owner: User;
 }
-type g = Update<Post>;
 declare function insertPost(post: Create<Post>): {};
-declare function updatePost(post: Update<Post> & Id<Post>): {};
-declare function deletePost(post: Id<Post>): {};
-declare function findPost<T extends SelectConstraint<T, Post>>(data: Find<Post> | {select: T}): SelectResult<T, Post>;
+declare function updatePost(post: Update<Post> & PickId<Post>): {};
+declare function deletePost(post: PickId<Post>): {};
+declare function findPost<T extends SelectConstraint<T, Post>, C extends {[key: string]: DBQuery}>(
+    data: Find<Post> | {select: T; selectCustom?: C},
+): SelectResult<T, C, Post>;
 
 const userId = 1 as UserId;
 const db = {
@@ -162,13 +154,17 @@ const res = findPost({
             },
         ],
     },
-    filter: {
-        id: {eq: 1},
+    selectCustom: {
+        score: {} as DBQuery,
+    },
+    where: {
+        id: {eq: 1 as PostId},
+        title: 'x',
         createdAt: {
             between: [new Date(), new Date()],
         },
     },
-    sort: {
+    order: {
         postStat: {
             views: 'asc',
         },
@@ -183,6 +179,7 @@ const res = findPost({
     limit: 10,
 });
 
+res.score;
 res.id;
 res.author.name;
 res.comments;
