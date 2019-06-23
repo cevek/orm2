@@ -33,8 +33,8 @@ type Update<T, K extends keyof T = Exclude<keyof T, 'id' | ReadonlyKeys<T>>> = T
     : {[P in K]?: Update<T[P]>};
 type PickId<T> = T extends {id: any} ? {id: T['id']} : unknown;
 
-type Find<T> = {
-    select: Select<T>;
+type Find<T, SelectT = T> = {
+    select: Select<SelectT>;
     selectCustom?: {[key: string]: DBQuery};
     where?: Filter<T>;
     whereOr?: Filter<T>[];
@@ -52,8 +52,20 @@ type GQLFind<T> = {
 };
 
 type SelectConstraint<T, Entity> = {
-    [P in keyof T]: P extends keyof Entity ? (T[P] extends Primitive ? any : SelectConstraint<T[P], Entity[P]>) : never
+    [P in keyof T]: P extends keyof Entity
+        ? (Entity[P] extends Primitive
+              ? any
+              : Entity[P] extends any[]
+              ? SelectConstraintArray<T[P], Entity[P]>
+              : SelectConstraint<T[P], Entity[P]>)
+        : never
 };
+type SelectConstraintArray<T, Entity> = Entity extends any[]
+    ? T extends {select: any}
+        ? Find<Entity[number], SelectConstraint<T['select'], Entity[number]>>
+        : never
+    : never;
+
 type SelectResult<T, C, Entity, K extends keyof Entity = Extract<keyof Entity, keyof T>> = {
     [P in K]: Entity[P] extends Primitive
         ? Entity[P]
@@ -63,11 +75,11 @@ type SelectResult<T, C, Entity, K extends keyof Entity = Extract<keyof Entity, k
 } &
     {[P in keyof C]?: string};
 type SelectResultArr<T, Entity> = {
-    [P in keyof Entity]: SelectResult<T extends any[] ? T[number] : never, {}, Entity[P]>
+    [P in keyof Entity]: SelectResult<T extends {select: any} ? T['select'] : never, T extends {selectCustom: any} ? T['selectCustom'] : {}, Entity[P]>
 };
-type Select<T> = {[P in keyof T]?: T[P] extends Primitive ? 0 : Select<T[P]>};
+type Select<T> = {[P in keyof T]?: T[P] extends Primitive ? 0 : T[P] extends any[] ? Find<T[P][number]> : Select<T[P]>};
 
-type Sort<T> = {[P in keyof T]?: T[P] extends Primitive ? 'asc' | 'desc' : Sort<T[P]>};
+type Sort<T> = {[P in keyof T]?: T[P] extends Primitive ? 'asc' | 'desc' : T[P] extends any[] ? never : Sort<T[P]>};
 
 type Filter<T> = {
     [P in keyof T]?: T[P] extends Date
@@ -78,6 +90,8 @@ type Filter<T> = {
         ? TransformOperator<NumberOperators, T[P]>
         : T[P] extends boolean
         ? TransformOperator<BooleanOperators, T[P]>
+        : T[P] extends any[]
+        ? never
         : Filter<T[P]>
 };
 type GQLFilter<T> = {
