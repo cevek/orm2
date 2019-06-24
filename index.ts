@@ -33,11 +33,11 @@ type Update<T, K extends keyof T = Exclude<keyof T, 'id' | ReadonlyKeys<T>>> = T
     : {[P in K]?: Update<T[P]>};
 type PickId<T> = T extends {id: any} ? {id: T['id']} : unknown;
 
+type CustomSelect = {[key: string]: DBQuery | CustomSelect | undefined};
 type Find<T, SelectT = T> = {
     select: Select<SelectT>;
-    selectCustom?: {[key: string]: DBQuery};
-    where?: Filter<T>;
-    whereOr?: Filter<T>[];
+    selectCustom?: CustomSelect;
+    where?: Filter<T>[];
     order?: Sort<T>;
     limit?: number;
     offset?: number;

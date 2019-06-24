@@ -64,6 +64,7 @@ interface Attachment {
 declare function insertPost(post: Create<Post>): {};
 declare function updatePost(post: Update<Post> & PickId<Post>): {};
 declare function deletePost(post: PickId<Post>): {};
+
 declare function findPost<T extends SelectConstraint<T, Post>, C extends {[key: string]: DBQuery}>(
     data: Find<Post> | {select: T; selectCustom?: C},
 ): SelectResult<T, C, Post>;
@@ -135,6 +136,7 @@ updatePost({
     },
 });
 
+type G = SelectConstraint<{author: {name: 1; x: 1}}, Post>;
 const res = findPost({
     select: {
         id: 0,
@@ -145,36 +147,52 @@ const res = findPost({
         postStat: {
             views: 0,
         },
-        comments: [
-            {
+        comments: {
+            select: {
                 text: 0,
                 author: {
                     name: 0,
                 },
+                subcomments: {
+                    select: {
+                        author: {
+                            name: 0,
+                        },
+                    },
+                },
             },
-        ],
-    },
-    selectCustom: {
-        score: {} as DBQuery,
-    },
-    where: {
-        id: {eq: 1 as PostId},
-        title: 'x',
-        createdAt: {
-            between: [new Date(), new Date()],
-        },
-    },
-    order: {
-        postStat: {
-            views: 'asc',
-        },
-        comments: [
-            {
+            selectCustom: {
+                xxx: {} as DBQuery,
+            },
+            order: {
                 author: {
                     name: 'asc',
                 },
             },
-        ],
+            limit: 10,
+        },
+    },
+    selectCustom: {
+        score: {} as DBQuery,
+    },
+    where: [
+        {
+            id: {eq: 1 as PostId},
+            title: 'x',
+            createdAt: {
+                between: [new Date(), new Date()],
+            },
+            postStat: {
+                views: {
+                    gt: 100,
+                },
+            },
+        },
+    ],
+    order: {
+        postStat: {
+            views: 'asc',
+        },
     },
     limit: 10,
 });
@@ -183,4 +201,7 @@ res.score;
 res.id;
 res.author.name;
 res.comments;
+res.comments[0];
+res.comments.map(x => x.subcomments.map(sub => sub.author.name));
 res.comments[0].author.name;
+res.comments[0].xxx;
