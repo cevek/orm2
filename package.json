@@ -16,5 +16,8 @@
   "bugs": {
     "url": "https://github.com/cevek/orm2/issues"
   },
-  "homepage": "https://github.com/cevek/orm2#readme"
+  "homepage": "https://github.com/cevek/orm2#readme",
+  "dependencies": {
+    "typescript": "^3.5.2"
+  }
 }

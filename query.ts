@@ -1,13 +1,142 @@
-type Ref = {to: Field; collection: boolean; through: Field | undefined};
-type Field = {table: Table; tableName: string | undefined; name: string; ref: Ref | undefined};
-type Table = {name: string; id: Field; fields: Map<string, Field>};
+export type Ref = {from: Field; to: Field; collection: boolean; through: Field | undefined};
+export type Field = {table: Table; tableName: string | undefined; name: string; ref: Ref | undefined};
+export type Table = {name: string; id: Field; fields: Map<string, Field>};
 // declare const tableStructs: Map<string, Table>;
 type Hash = {[key: string]: Hash};
+type SubQuery = {ref: Ref; parentFieldName: string; find: Find<unknown, unknown>};
+
+export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}) {
+    q.where = q.where || [];
+    const tables = new Map<string, {table: Table; a: Field; b: Field}>();
+    const subQueries = new Map<string, SubQuery>();
+    const selectFields = extractFields(table, q.select, subQueries, tables);
+    const conditions = q.where.map(where => extractFields(table, where, subQueries, tables));
+    const orders = q.order ? extractFields(table, q.order, subQueries, tables) : undefined;
+
+    const sqlQuery = sql(
+        'SELECT ',
+        ...join<Field | string>(selectFields.map(field => field.key), ', '),
+        ', ',
+        table.id,
+        ' FROM `',
+        table.name,
+        '` ',
+        [...tables]
+            .map(([name, join]) => sql('LEFT JOIN `', join.table.name, '` `', name, '` ON ', join.a, '=', join.b))
+            .join(' '),
+    );
+
+    console.log({selectFields, conditions, orders, tables, subQueries, sqlQuery});
+
+    const items: unknown[] = data[table.name];
+
+    const itemIds = [];
+    const itemsMap = new Map<number, unknown>();
+    for (const item of items) {
+        const id = (item as {id: number}).id;
+        itemsMap.set(id, item);
+        itemIds.push(id);
+    }
+    for (const [, subQuery] of subQueries) {
+        selectSubQuery(subQuery, itemIds, itemsMap, data);
+    }
+    return prepareResult(items, selectFields);
+}
+
+function prepareResult(items: unknown[], selectFields: {key: Field; value: unknown; path: string[]}[]) {
+    return items.map(item => {
+        const resultItem: Hash = {};
+        for (let k = 0; k < selectFields.length; k++) {
+            const field = selectFields[k];
+            let dest = resultItem;
+            for (let i = 0; i < field.path.length - 1; i++) {
+                // if (dest === undefined) dest = {};
+                if (dest[field.path[i]] === undefined) {
+                    dest[field.path[i]] = {};
+                }
+                dest = dest[field.path[i]];
+                // if (dest === undefined) dest = {};
+            }
+            dest[field.path[field.path.length - 1]] = (item as Hash[])[k];
+        }
+        return resultItem as unknown;
+    });
+}
+
+function selectSubQuery(
+    subQuery: SubQuery,
+    itemIds: number[],
+    itemsMap: Map<number, unknown>,
+    data: {[key: string]: any},
+) {
+    let subFind = subQuery.find;
+    if (subQuery.ref.through !== undefined) {
+        const subName = subQuery.ref.through.name;
+        subFind = {
+            select: {
+                [subName]: subFind.select,
+            },
+            where: [
+                {
+                    [subName]: subFind.where,
+                },
+            ],
+            selectCustom: {
+                [subName]: subFind.selectCustom,
+            },
+            limit: subFind.limit,
+            offset: subFind.offset,
+            order: {
+                [subName]: subFind.order,
+            },
+        };
+        subQuery.ref.through;
+    }
+    (subFind.select as {
+        [key: string]: 0;
+    })[subQuery.ref.to.name] = 0;
+    subFind.where = subFind.where || [];
+    subFind.where.push({
+        [subQuery.ref.to.name]: {
+            in: itemIds,
+        },
+    });
+    const subItems = query(subQuery.ref.to.table, subFind, data);
+    for (const subItem of subItems) {
+        const itemId = (subItem as {
+            [key: string]: number;
+        })[subQuery.ref.to.name];
+        const item = itemsMap.get(itemId) as {
+            [key: string]: unknown[];
+        };
+        let arr = item[subQuery.parentFieldName];
+        if (arr === undefined) {
+            arr = [];
+            item[subQuery.parentFieldName] = arr;
+        }
+        arr.push(subItem);
+    }
+}
+
+export function createField(tableName: string, name: string, table: Table, ref?: Ref): Field {
+    return {table, tableName, name, ref};
+}
+
+function sql(...args: (Field | string)[]) {
+    let s = '';
+    for (const arg of args) {
+        if (typeof arg === 'string') {
+            s += arg;
+        } else {
+            s += `\`${arg.tableName}\`.\`${arg.name}\``;
+        }
+    }
+    return s;
+}
 
 function extractFields(
     table: Table,
     obj: Hash,
-    tableName: string,
     subQueries: Map<
         string,
         {
@@ -17,6 +146,7 @@ function extractFields(
         }
     >,
     tables: Map<string, {table: Table; a: Field; b: Field}>,
+    tableName: string = table.name,
     path: string[] = [],
     keyValues: {key: Field; value: unknown; path: string[]}[] = [],
 ) {
@@ -33,16 +163,16 @@ function extractFields(
                 });
             } else {
                 tables.set(refTableName, {
-                    table,
-                    a: createField(tableName, table.id.name, table),
+                    table: field.ref.to.table,
+                    a: createField(tableName, field.ref.from.name, table),
                     b: createField(refTableName, field.ref.to.name, field.ref.to.table),
                 });
                 extractFields(
                     field.ref.to.table,
                     obj[key],
-                    refTableName,
                     subQueries,
                     tables,
+                    refTableName,
                     [...path, key],
                     keyValues,
                 );
@@ -54,91 +184,16 @@ function extractFields(
     return keyValues;
 }
 
-export function query(q: Find<unknown>) {
-    q.where = q.where || [];
-    const table = {} as Table;
-    const tables = new Map<string, {table: Table; a: Field; b: Field}>();
-    const subQueries = new Map<
-        string,
-        {
-            ref: Ref;
-            parentFieldName: string;
-            find: Find<unknown>;
-        }
-    >();
-    const selectFields = extractFields(table, q.select, '', subQueries, tables);
-    // selectFields.push({key: table.id, value: 0, path: []});
-    const conditions = q.where.map(where => extractFields(table, where, '', subQueries, tables));
-    const orders = q.order ? extractFields(table, q.order, '', subQueries, tables) : undefined;
-
-    const items: unknown[] = [];
-    const itemIds = items.map(item => (item as {id: number}).id);
-    const itemsMap = new Map<number, unknown>();
-    for (const [, subQuery] of subQueries) {
-        let subFind = subQuery.find;
-        if (subQuery.ref.through !== undefined) {
-            const subName = subQuery.ref.through.name;
-            subFind = {
-                select: {
-                    [subName]: subFind.select,
-                },
-                where: [
-                    {
-                        [subName]: subFind.where,
-                    },
-                ],
-                selectCustom: {
-                    [subName]: subFind.selectCustom,
-                },
-                limit: subFind.limit,
-                offset: subFind.offset,
-                order: {
-                    [subName]: subFind.order,
-                },
-            };
-            subQuery.ref.through;
-        }
-        (subFind.select as {[key: string]: 0})[subQuery.ref.to.name] = 0;
-        subFind.where = subFind.where || [];
-        subFind.where.push({
-            [subQuery.ref.to.name]: {
-                in: itemIds,
-            },
-        });
-        const subItems = query(subFind);
-        for (const subItem of subItems) {
-            const itemId = (subItem as {[key: string]: number})[subQuery.ref.to.name];
-            const item = itemsMap.get(itemId) as {[key: string]: unknown[]};
-            let arr = item[subQuery.parentFieldName];
-            if (arr === undefined) {
-                arr = [];
-                item[subQuery.parentFieldName] = arr;
-            }
-            arr.push(subItem);
+function join<T>(arr: T[], separator: T): T[] {
+    const res: T[] = [];
+    for (let i = 0; i < arr.length; i++) {
+        if (i < arr.length - 1) {
+            res.push(arr[i], separator);
+        } else {
+            res.push(arr[i]);
         }
     }
-    const result = items.map(item => {
-        const resultItem: Hash = {};
-        for (const field of selectFields) {
-            let dest = resultItem;
-            let source = item as Hash;
-            for (const part of field.path) {
-                if (dest === undefined) {
-                    dest = {};
-                }
-                if (source === undefined) break;
-                const next = source[part];
-                source = next;
-                dest[part] = next;
-            }
-        }
-        return resultItem as unknown;
-    });
-    return result;
-}
-
-function createField(tableName: string, name: string, table: Table, ref?: Ref): Field {
-    return {table, tableName, name, ref};
+    return res;
 }
 
 /**
