@@ -96,8 +96,9 @@ function selectSubQuery(
     data: {[key: string]: any},
 ) {
     let subFind = subQuery.find;
+    let subName;
     if (subQuery.ref.through !== undefined) {
-        const subName = subQuery.ref.through.name;
+        subName = subQuery.ref.through.name;
         subFind = {
             select: {
                 [subName]: subFind.select,
@@ -141,7 +142,11 @@ function selectSubQuery(
             arr = [];
             item[subQuery.parentFieldName] = arr;
         }
-        arr.push(subItem);
+        if (subName !== undefined) {
+            arr.push((subItem as {[key: string]: unknown})[subName]);
+        } else {
+            arr.push(subItem);
+        }
     }
 }
 
@@ -190,7 +195,7 @@ function extractFields(
         if (field.ref) {
             const refTableName = tableName ? tableName + '.' + key : key;
             if (field.ref.collection) {
-                subQueries.set('refTableName', {
+                subQueries.set(refTableName, {
                     ref: field.ref,
                     parentFieldName: key,
                     find: (obj[key] as {}) as Find<unknown>,
