@@ -13,37 +13,52 @@ type ParentList = {
 };
 
 type ExtractField = {
+    kind: 'field';
     key: Field;
     value: unknown;
-    group: Group;
     path: string[];
+};
+type Group = {
+    kind: 'AND' | 'OR';
+    group: Group | undefined;
+    items: (Group | ExtractField)[];
 };
 
 export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}, parent?: ParentList) {
     const tables = new Map<string, {table: Table; a: Field; b: Field}>();
     const subQueries = new Map<string, SubQuery>();
-    const rootGroup: Group = {type: 'AND', parent: undefined!};
-    const selectFields = extractFields(table, q.select, subQueries, tables, rootGroup);
-    const conditions = q.where !== undefined ? extractFields(table, q.where, subQueries, tables, rootGroup) : [];
-    const orders = q.order !== undefined ? extractFields(table, q.order, subQueries, tables, rootGroup) : [];
+    const selectFields = extractFields(table, q.select, subQueries, tables).items as ExtractField[];
+    const conditionGroup = extractFields(table, q.where, subQueries, tables);
+    const orders = extractFields(table, q.order, subQueries, tables).items as ExtractField[];
     const values: unknown[] = [];
 
     let parentIdFieldIdx = -1;
     if (parent !== undefined) {
         parentIdFieldIdx = selectFields.length;
-        selectFields.push({key: parent.ref.to, value: 'skip', group: rootGroup, path: [parent.ref.to.name]});
-        conditions.push({
+        selectFields.push({
+            kind: 'field',
             key: parent.ref.to,
-            value: {in: parent.ids},
-            group: rootGroup,
+            value: 'skip',
             path: [parent.ref.to.name],
         });
+        const condition: ExtractField = {
+            kind: 'field',
+            key: parent.ref.to,
+            value: {in: parent.ids},
+            path: [parent.ref.to.name],
+        };
+        conditionGroup.items.push(condition);
     }
 
     let idFieldIdx = -1;
     if (subQueries.size > 0) {
         idFieldIdx = selectFields.length;
-        selectFields.push({key: table.id, value: 'skip', group: rootGroup, path: [table.id.name]});
+        selectFields.push({
+            kind: 'field',
+            key: table.id,
+            value: 'skip',
+            path: [table.id.name],
+        });
     }
 
     let sql = 'SELECT ';
@@ -79,50 +94,45 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
             '=' +
             escapeField(join.b);
     }
-    if (conditions.length > 0) {
+    if (conditionGroup.items.length > 0) {
         sql += ' WHERE ';
-        let prevGroup = rootGroup;
-        const first = conditions[0];
-        for (const cond of conditions) {
-            const isChildOfPrev = prevGroup === cond.group.parent;
-            const isParentOfPrev = prevGroup.parent === cond.group;
-            if (isParentOfPrev) {
-                sql += ')';
+        function iter(group: Group, level: number) {
+            if (level > 0) sql += '(';
+            for (let i = 0; i < group.items.length; i++) {
+                const item = group.items[i];
+                if (i > 0) {
+                    sql += ' ' + group.kind + ' ';
+                }
+                if (item.kind === 'field') {
+                    sql += escapeField(item.key);
+                } else {
+                    iter(item, level + 1);
+                }
             }
-            if (first !== cond) {
-                sql += ' ' + (isChildOfPrev ? cond.group.parent.type : cond.group.type) + ' ';
-            }
-            if (isChildOfPrev) {
-                sql += '(';
-            }
-            sql += escapeField(cond.key);
-            prevGroup = cond.group;
+            if (level > 0) sql += ')';
         }
-        const lastIsChildOfRoot = prevGroup.parent === rootGroup;
-        if (lastIsChildOfRoot) {
-            sql += ')';
-        }
+        iter(conditionGroup, 0);
     }
     if (orders.length > 0) {
         sql += ' ORDER BY ';
         const last = orders[orders.length - 1];
         for (const order of orders) {
-            sql += escapeField(order.key) + order.value === 'desc' ? ' DESC' : ' ASC';
+            sql += escapeField(order.key) + (order.value === 'desc' ? ' DESC' : ' ASC');
             if (order !== last) {
                 sql += ', ';
             }
         }
     }
     if (q.limit !== undefined) {
+        sql += ' LIMIT $' + values.length;
         values.push(q.limit);
-        sql += ' LIMIT ?';
     }
     if (q.offset !== undefined) {
+        sql += ' OFFSET $' + values.length;
         values.push(q.offset);
-        sql += ' OFFSET ?';
     }
 
-    console.log({selectFields, conditions, orders, tables, subQueries, sql, values});
+    console.log({selectFields, conditionGroup, orders, tables, subQueries, sql, values});
 
     const rawItems: unknown[][] = data[table.name];
 
@@ -183,57 +193,23 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
     return {result, rawItems};
 }
 
-export function createField(tableName: string, name: string, table: Table, ref?: Ref): Field {
-    return {table, tableName, name, ref};
-}
-
-// function sql(...args: (Field | string)[]) {
-//     let s = '';
-//     for (const arg of args) {
-//         if (typeof arg === 'string') {
-//             s += arg;
-//         } else {
-//             s += `${escapeName(arg.tableName)}.${escapeName(arg.name)}`;
-//         }
-//     }
-//     return s;
-// }
-
-function escapeName(name: string) {
-    // if (reservedSQLWords.has(name.toUpperCase())) {
-    return '"' + name + '"';
-    // }
-    // return name;
-}
-function escapeField(field: Field) {
-    return escapeName(field.tableName) + '.' + escapeName(field.name);
-}
-type Group = {type: 'AND' | 'OR'; parent: Group};
-
 function extractFields(
     table: Table,
-    obj: Hash,
-    subQueries: Map<
-        string,
-        {
-            ref: Ref;
-            parentFieldName: string;
-            find: Find<unknown>;
-        }
-    >,
+    obj: Hash | undefined,
+    subQueries: Map<string, SubQuery>,
     tables: Map<string, {table: Table; a: Field; b: Field}>,
-    group: Group,
+    group: Group = {kind: 'AND', group: undefined, items: []},
     tableName: string = table.name,
     path: string[] = [],
-    keyValues: ExtractField[] = [],
-    // conditions: ['and' | 'or', {key: Field; value: unknown; path: string[]}] = [],
 ) {
+    if (obj === undefined) return group;
     for (const key in obj) {
         if (key === 'OR' || key === 'AND') {
             const list = (obj[key] as {}) as Hash[];
+            const subGroup: Group = {kind: key, group: group, items: []};
+            group.items.push(subGroup);
             for (const obj2 of list) {
-                const subGroup: Group = {type: key, parent: group};
-                extractFields(table, obj2, subQueries, tables, subGroup, tableName, path, keyValues);
+                extractFields(table, obj2, subQueries, tables, subGroup, tableName, path);
             }
             continue;
         }
@@ -253,72 +229,33 @@ function extractFields(
                     a: createField(tableName, field.ref.from.name, table),
                     b: createField(refTableName, field.ref.to.name, field.ref.to.table),
                 });
-                extractFields(
-                    field.ref.to.table,
-                    obj[key],
-                    subQueries,
-                    tables,
-                    group,
-                    refTableName,
-                    [...path, key],
-                    keyValues,
-                );
+                extractFields(field.ref.to.table, obj[key], subQueries, tables, group, refTableName, [...path, key]);
             }
         } else {
             const keyValue: ExtractField = {
+                kind: 'field',
                 key: createField(tableName, field.name, table),
-                group: group,
                 value: obj[key],
                 path: [...path, key],
             };
-            keyValues.push(keyValue);
+            group.items.push(keyValue);
         }
     }
-    return keyValues;
+    return group;
 }
 
-// function join<T>(arr: T[], separator: T): T[] {
-//     const res: T[] = [];
-//     for (let i = 0; i < arr.length; i++) {
-//         if (i < arr.length - 1) {
-//             res.push(arr[i], separator);
-//         } else {
-//             res.push(arr[i]);
-//         }
-//     }
-//     return res;
-// }
+export function createField(tableName: string, name: string, table: Table, ref?: Ref): Field {
+    return {table, tableName, name, ref};
+}
 
-/**
- * 
-select id, title, user.id, user.name 
-from posts 
-    left join users on (authorId = users.id) 
-    left join postStat on (postStatId = postStat.id) 
-where id = 1 and title = 'x' and postStat.views > 100 
-order postState.views asc
-===
-posts[id] = {title: data[0], stat: {views: data[1]}, author: {name: data[2]}, comments: []};
- * 
- *
-select postComments.postId, comment.text, user.name
-from postsComments 
-    left join comments on (comments.id = postsComments.id)
-    left join users on (comment.authorId = users.id) 
-where postsComments.postId in (postIds)
-order users.name asc
-====
-comments[id] = {text, author: {name}};
-posts[postId].comments.push(comments[id]) 
- * 
- * 
- */
-
-/**
-
-tables: Map<Path, {name: Field; a: Field; b: Field}>;
-
-
- 
- * 
-  */
+function escapeName(name: string) {
+    return '"' + name + '"';
+    // const lowerCase = name.toLowerCase();
+    // if (lowerCase !== name || reservedSQLWords.has(lowerCase)) {
+    //     return '"' + name + '"';
+    // }
+    // return name;
+}
+function escapeField(field: Field) {
+    return escapeName(field.tableName) + '.' + escapeName(field.name);
+}
