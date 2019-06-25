@@ -6,8 +6,14 @@ export type Table = {name: string; id: Field; fields: Map<string, Field>};
 // declare const tableStructs: Map<string, Table>;
 type Hash = {[key: string]: Hash};
 type SubQuery = {ref: Ref; parentFieldName: string; find: Find<unknown, unknown>};
+type ParentList = {
+    ref: Ref;
+    map: Map<number, {[key: string]: unknown[]}>;
+    field: string;
+    ids: number[];
+};
 
-export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}) {
+export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}, parent?: ParentList) {
     q.where = q.where || [];
     const tables = new Map<string, {table: Table; a: Field; b: Field}>();
     const subQueries = new Map<string, SubQuery>();
@@ -15,16 +21,37 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
     const conditions = q.where.map(where => extractFields(table, where, subQueries, tables));
     const orders = q.order ? extractFields(table, q.order, subQueries, tables) : [];
 
+    let parentIdFieldIdx = -1;
+    if (parent !== undefined) {
+        parentIdFieldIdx = selectFields.length;
+        selectFields.push({key: parent.ref.from, value: 'skip', path: [parent.ref.from.name]});
+        conditions.push([{key: parent.ref.from, value: {in: parent.ids}, path: [parent.ref.from.name]}]);
+    }
+
+    let idFieldIdx = -1;
+    if (subQueries.size > 0) {
+        idFieldIdx = selectFields.length;
+        selectFields.push({key: table.id, value: 'skip', path: [table.id.name]});
+    }
+
     const sqlQuery = sql(
         'SELECT ',
         ...join<Field | string>(selectFields.map(field => field.key), ', '),
-        ...(subQueries.size > 0 ? [', ', table.id] : []),
         ' FROM ',
         escapeName(table.name),
-        ' ',
+        ...(parent !== undefined && parent.ref.through !== undefined
+            ? [
+                  ' RIGHT JOIN ',
+                  escapeName(parent.ref.to.table.name),
+                  ' ON ',
+                  table.id,
+                  '=',
+                  parent.ref.through.ref!.from,
+              ]
+            : []),
         [...tables]
             .map(([name, join]) =>
-                sql('LEFT JOIN ', escapeName(join.table.name), ' ', escapeName(name), ' ON ', join.a, '=', join.b),
+                sql(' LEFT JOIN ', escapeName(join.table.name), ' ', escapeName(name), ' ON ', join.a, '=', join.b),
             )
             .join(' '),
         ...(conditions.length > 0
@@ -53,101 +80,61 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
 
     const rawItems: unknown[][] = data[table.name];
 
-    const itemsMap = new Map<number, unknown>();
-    const result = prepareResult(rawItems, selectFields, itemsMap);
-    const itemIds = [...itemsMap.keys()];
-    for (const [, subQuery] of subQueries) {
-        selectSubQuery(subQuery, itemIds, itemsMap, data);
-    }
-    return {result, rawItems};
-}
-
-function prepareResult(
-    items: unknown[][],
-    selectFields: {key: Field; value: unknown; path: string[]}[],
-    itemsMap: Map<number, unknown>,
-) {
-    return items.map(item => {
-        const id = item[item.length - 1] as number;
-        const resultItem: Hash = {};
+    const itemsMap = new Map<number, {[key: string]: unknown[]}>();
+    const result = rawItems.map(item => {
+        const id = item[idFieldIdx] as number;
+        const resultItem = {};
         itemsMap.set(id, resultItem);
         for (let k = 0; k < selectFields.length; k++) {
             const field = selectFields[k];
             if (field.value === 'skip') continue;
-            let dest = resultItem;
+            let dest = resultItem as Hash;
             for (let i = 0; i < field.path.length - 1; i++) {
-                // if (dest === undefined) dest = {};
-                if (dest[field.path[i]] === undefined) {
-                    dest[field.path[i]] = {};
+                const part = field.path[i];
+                let d = dest[part];
+                if (d === undefined) {
+                    d = {};
+                    dest[part] = d;
                 }
-                dest = dest[field.path[i]];
-                // if (dest === undefined) dest = {};
+                dest = d;
             }
-            dest[field.path[field.path.length - 1]] = (item as Hash[])[k];
+            dest[field.path[field.path.length - 1]] = item[k] as Hash;
         }
         return resultItem as unknown;
     });
-}
+    if (subQueries.size > 0) {
+        const itemIds = [...itemsMap.keys()];
+        for (const [, subQuery] of subQueries) {
+            const parent: ParentList = {
+                ids: itemIds,
+                field: subQuery.parentFieldName,
+                map: itemsMap,
+                ref: subQuery.ref,
+            };
+            query(
+                subQuery.ref.through ? subQuery.ref.through.ref!.to.table : subQuery.ref.to.table,
+                subQuery.find,
+                data,
+                parent,
+            );
+        }
+    }
 
-function selectSubQuery(
-    subQuery: SubQuery,
-    itemIds: number[],
-    itemsMap: Map<number, unknown>,
-    data: {[key: string]: any},
-) {
-    let subFind = subQuery.find;
-    let subName;
-    if (subQuery.ref.through !== undefined) {
-        subName = subQuery.ref.through.name;
-        subFind = {
-            select: {
-                [subName]: subFind.select,
-            },
-            where: [
-                {
-                    [subName]: subFind.where,
-                },
-            ],
-            selectCustom: {
-                [subName]: subFind.selectCustom,
-            },
-            limit: subFind.limit,
-            offset: subFind.offset,
-            order: {
-                [subName]: subFind.order,
-            },
-        };
-        subQuery.ref.through;
-    }
-    (subFind.select as {
-        [key: string]: string;
-    })[subQuery.ref.to.name] = 'skip';
-    const subFindKeyFieldIdx = Object.keys(subFind.select).length - 1;
-    subFind.where = subFind.where || [];
-    subFind.where.push({
-        [subQuery.ref.to.name]: {
-            in: itemIds,
-        },
-    });
-    const {rawItems, result} = query(subQuery.ref.to.table, subFind, data);
-    for (let i = 0; i < result.length; i++) {
-        const subItem = result[i];
-        const rawItem = rawItems[i];
-        const itemId = rawItem[subFindKeyFieldIdx] as number;
-        const item = itemsMap.get(itemId) as {
-            [key: string]: unknown[];
-        };
-        let arr = item[subQuery.parentFieldName];
-        if (arr === undefined) {
-            arr = [];
-            item[subQuery.parentFieldName] = arr;
-        }
-        if (subName !== undefined) {
-            arr.push((subItem as {[key: string]: unknown})[subName]);
-        } else {
-            arr.push(subItem);
+    if (parent !== undefined) {
+        for (let i = 0; i < result.length; i++) {
+            const item = result[i];
+            const rawItem = rawItems[i];
+            const itemId = rawItem[parentIdFieldIdx] as number;
+            const parentItem = parent.map.get(itemId)!;
+            let arr = parentItem[parent.field];
+            if (arr === undefined) {
+                arr = [];
+                parentItem[parent.field] = arr;
+            }
+            arr.push(item);
         }
     }
+    return {result, rawItems};
 }
 
 export function createField(tableName: string, name: string, table: Table, ref?: Ref): Field {

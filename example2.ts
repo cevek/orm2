@@ -115,9 +115,9 @@ Post.fields.set(
 );
 
 const data = {
-    PostComment: [['Ivan', 2]],
+    Comment: [['Ivan', 2], ['John', 2]],
     PostLike: [['Vova', 2], ['Vasya', 2]],
-    Post: [['Hello', 'Alex', 2]],
+    Post: [['Hello', 'Alex', 2]], 
 };
 const res = query(
     Post,
