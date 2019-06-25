@@ -24,8 +24,15 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
     let parentIdFieldIdx = -1;
     if (parent !== undefined) {
         parentIdFieldIdx = selectFields.length;
-        selectFields.push({key: parent.ref.from, value: 'skip', path: [parent.ref.from.name]});
-        conditions.push([{key: parent.ref.from, value: {in: parent.ids}, path: [parent.ref.from.name]}]);
+        selectFields.push({key: parent.ref.to, value: 'skip', path: [parent.ref.to.name]});
+        const inIds = {key: parent.ref.to, value: {in: parent.ids}, path: [parent.ref.to.name]};
+        if (conditions.length === 0) {
+            conditions.push([inIds]);
+        } else {
+            conditions.forEach(cond => {
+                cond.push(inIds);
+            });
+        }
     }
 
     let idFieldIdx = -1;
