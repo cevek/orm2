@@ -3,7 +3,6 @@ import {reservedSQLWords} from './reserved.js';
 export type Ref = {from: Field; to: Field; collection: boolean; through: Field | undefined};
 export type Field = {table: Table; tableName: string; name: string; ref: Ref | undefined};
 export type Table = {name: string; id: Field; fields: Map<string, Field>};
-// declare const tableStructs: Map<string, Table>;
 type Hash = {[key: string]: Hash};
 type SubQuery = {ref: Ref; parentFieldName: string; find: Find<unknown, unknown>};
 type ParentList = {
@@ -13,77 +12,117 @@ type ParentList = {
     ids: number[];
 };
 
+type ExtractField = {
+    key: Field;
+    value: unknown;
+    group: Group;
+    path: string[];
+};
+
 export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}, parent?: ParentList) {
-    q.where = q.where || [];
     const tables = new Map<string, {table: Table; a: Field; b: Field}>();
     const subQueries = new Map<string, SubQuery>();
-    const selectFields = extractFields(table, q.select, subQueries, tables);
-    const conditions = q.where.map(where => extractFields(table, where, subQueries, tables));
-    const orders = q.order ? extractFields(table, q.order, subQueries, tables) : [];
+    const rootGroup: Group = {type: 'AND', parent: undefined!};
+    const selectFields = extractFields(table, q.select, subQueries, tables, rootGroup);
+    const conditions = q.where !== undefined ? extractFields(table, q.where, subQueries, tables, rootGroup) : [];
+    const orders = q.order !== undefined ? extractFields(table, q.order, subQueries, tables, rootGroup) : [];
+    const values: unknown[] = [];
 
     let parentIdFieldIdx = -1;
     if (parent !== undefined) {
         parentIdFieldIdx = selectFields.length;
-        selectFields.push({key: parent.ref.to, value: 'skip', path: [parent.ref.to.name]});
-        const inIds = {key: parent.ref.to, value: {in: parent.ids}, path: [parent.ref.to.name]};
-        if (conditions.length === 0) {
-            conditions.push([inIds]);
-        } else {
-            conditions.forEach(cond => {
-                cond.push(inIds);
-            });
-        }
+        selectFields.push({key: parent.ref.to, value: 'skip', group: rootGroup, path: [parent.ref.to.name]});
+        conditions.push({
+            key: parent.ref.to,
+            value: {in: parent.ids},
+            group: rootGroup,
+            path: [parent.ref.to.name],
+        });
     }
 
     let idFieldIdx = -1;
     if (subQueries.size > 0) {
         idFieldIdx = selectFields.length;
-        selectFields.push({key: table.id, value: 'skip', path: [table.id.name]});
+        selectFields.push({key: table.id, value: 'skip', group: rootGroup, path: [table.id.name]});
     }
 
-    const sqlQuery = sql(
-        'SELECT ',
-        ...join<Field | string>(selectFields.map(field => field.key), ', '),
-        ' FROM ',
-        escapeName(table.name),
-        ...(parent !== undefined && parent.ref.through !== undefined
-            ? [
-                  ' RIGHT JOIN ',
-                  escapeName(parent.ref.to.table.name),
-                  ' ON ',
-                  table.id,
-                  '=',
-                  parent.ref.through.ref!.from,
-              ]
-            : []),
-        [...tables]
-            .map(([name, join]) =>
-                sql(' LEFT JOIN ', escapeName(join.table.name), ' ', escapeName(name), ' ON ', join.a, '=', join.b),
-            )
-            .join(' '),
-        ...(conditions.length > 0
-            ? [
-                  ' WHERE ',
-                  ...join<Field | string>(
-                      conditions.map(cond => sql(...join<Field | string>(cond.map(c => c.key), ' AND '))),
-                      ' OR ',
-                  ),
-              ]
-            : []),
-        ...(orders.length > 0
-            ? [
-                  ' ORDER ',
-                  ...join<Field | string>(
-                      orders.map(order => sql(order.key, ' ', order.value === 'desc' ? 'DESC' : 'ASC')),
-                      ' ',
-                  ),
-              ]
-            : []),
-        ...(q.limit !== undefined ? [' LIMIT ', String(q.limit)] : []),
-        ...(q.offset !== undefined ? [' OFFSET ', String(q.offset)] : []),
-    );
+    let sql = 'SELECT ';
+    if (selectFields.length > 0) {
+        const last = selectFields[selectFields.length - 1];
+        for (const field of selectFields) {
+            sql += escapeField(field.key);
+            if (field !== last) {
+                sql += ', ';
+            }
+        }
+    }
 
-    console.log({selectFields, conditions, orders, tables, subQueries, sqlQuery});
+    sql += ' FROM ' + escapeName(table.name);
+
+    if (parent !== undefined && parent.ref.through !== undefined) {
+        sql +=
+            ' RIGHT JOIN ' +
+            escapeName(parent.ref.to.table.name) +
+            ' ON ' +
+            escapeField(table.id) +
+            '=' +
+            escapeField(parent.ref.through.ref!.from);
+    }
+    for (const [tableName, join] of tables) {
+        sql +=
+            ' LEFT JOIN ' +
+            escapeName(join.table.name) +
+            ' ' +
+            escapeName(tableName) +
+            ' ON ' +
+            escapeField(join.a) +
+            '=' +
+            escapeField(join.b);
+    }
+    if (conditions.length > 0) {
+        sql += ' WHERE ';
+        let prevGroup = rootGroup;
+        const first = conditions[0];
+        for (const cond of conditions) {
+            const isChildOfPrev = prevGroup === cond.group.parent;
+            const isParentOfPrev = prevGroup.parent === cond.group;
+            if (isParentOfPrev) {
+                sql += ')';
+            }
+            if (first !== cond) {
+                sql += ' ' + (isChildOfPrev ? cond.group.parent.type : cond.group.type) + ' ';
+            }
+            if (isChildOfPrev) {
+                sql += '(';
+            }
+            sql += escapeField(cond.key);
+            prevGroup = cond.group;
+        }
+        const lastIsChildOfRoot = prevGroup.parent === rootGroup;
+        if (lastIsChildOfRoot) {
+            sql += ')';
+        }
+    }
+    if (orders.length > 0) {
+        sql += ' ORDER BY ';
+        const last = orders[orders.length - 1];
+        for (const order of orders) {
+            sql += escapeField(order.key) + order.value === 'desc' ? ' DESC' : ' ASC';
+            if (order !== last) {
+                sql += ', ';
+            }
+        }
+    }
+    if (q.limit !== undefined) {
+        values.push(q.limit);
+        sql += ' LIMIT ?';
+    }
+    if (q.offset !== undefined) {
+        values.push(q.offset);
+        sql += ' OFFSET ?';
+    }
+
+    console.log({selectFields, conditions, orders, tables, subQueries, sql, values});
 
     const rawItems: unknown[][] = data[table.name];
 
@@ -148,17 +187,17 @@ export function createField(tableName: string, name: string, table: Table, ref?:
     return {table, tableName, name, ref};
 }
 
-function sql(...args: (Field | string)[]) {
-    let s = '';
-    for (const arg of args) {
-        if (typeof arg === 'string') {
-            s += arg;
-        } else {
-            s += `${escapeName(arg.tableName)}.${escapeName(arg.name)}`;
-        }
-    }
-    return s;
-}
+// function sql(...args: (Field | string)[]) {
+//     let s = '';
+//     for (const arg of args) {
+//         if (typeof arg === 'string') {
+//             s += arg;
+//         } else {
+//             s += `${escapeName(arg.tableName)}.${escapeName(arg.name)}`;
+//         }
+//     }
+//     return s;
+// }
 
 function escapeName(name: string) {
     // if (reservedSQLWords.has(name.toUpperCase())) {
@@ -166,6 +205,10 @@ function escapeName(name: string) {
     // }
     // return name;
 }
+function escapeField(field: Field) {
+    return escapeName(field.tableName) + '.' + escapeName(field.name);
+}
+type Group = {type: 'AND' | 'OR'; parent: Group};
 
 function extractFields(
     table: Table,
@@ -179,11 +222,21 @@ function extractFields(
         }
     >,
     tables: Map<string, {table: Table; a: Field; b: Field}>,
+    group: Group,
     tableName: string = table.name,
     path: string[] = [],
-    keyValues: {key: Field; value: unknown; path: string[]}[] = [],
+    keyValues: ExtractField[] = [],
+    // conditions: ['and' | 'or', {key: Field; value: unknown; path: string[]}] = [],
 ) {
     for (const key in obj) {
+        if (key === 'OR' || key === 'AND') {
+            const list = (obj[key] as {}) as Hash[];
+            for (const obj2 of list) {
+                const subGroup: Group = {type: key, parent: group};
+                extractFields(table, obj2, subQueries, tables, subGroup, tableName, path, keyValues);
+            }
+            continue;
+        }
         const field = table.fields.get(key);
         if (field === undefined) throw new Error(`${key} doesn't exists in ${table.name}`);
         if (field.ref) {
@@ -205,29 +258,36 @@ function extractFields(
                     obj[key],
                     subQueries,
                     tables,
+                    group,
                     refTableName,
                     [...path, key],
                     keyValues,
                 );
             }
         } else {
-            keyValues.push({key: createField(tableName, field.name, table), value: obj[key], path: [...path, key]});
+            const keyValue: ExtractField = {
+                key: createField(tableName, field.name, table),
+                group: group,
+                value: obj[key],
+                path: [...path, key],
+            };
+            keyValues.push(keyValue);
         }
     }
     return keyValues;
 }
 
-function join<T>(arr: T[], separator: T): T[] {
-    const res: T[] = [];
-    for (let i = 0; i < arr.length; i++) {
-        if (i < arr.length - 1) {
-            res.push(arr[i], separator);
-        } else {
-            res.push(arr[i]);
-        }
-    }
-    return res;
-}
+// function join<T>(arr: T[], separator: T): T[] {
+//     const res: T[] = [];
+//     for (let i = 0; i < arr.length; i++) {
+//         if (i < arr.length - 1) {
+//             res.push(arr[i], separator);
+//         } else {
+//             res.push(arr[i]);
+//         }
+//     }
+//     return res;
+// }
 
 /**
  * 

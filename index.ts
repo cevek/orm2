@@ -37,7 +37,7 @@ type CustomSelect = {[key: string]: DBQuery | CustomSelect | undefined};
 type Find<T, SelectT = T> = {
     select: Select<SelectT>;
     selectCustom?: CustomSelect;
-    where?: Filter<T>[];
+    where?: Filter<T>;
     order?: Sort<T>;
     limit?: number;
     offset?: number;
@@ -45,7 +45,6 @@ type Find<T, SelectT = T> = {
 
 type GQLFind<T> = {
     filter?: Filter<T>;
-    filtersOr?: Filter<T>[];
     sort?: Sort<T>;
     limit?: number;
     offset?: number;
@@ -75,7 +74,11 @@ type SelectResult<T, C, Entity, K extends keyof Entity = Extract<keyof Entity, k
 } &
     {[P in keyof C]?: string};
 type SelectResultArr<T, Entity> = {
-    [P in keyof Entity]: SelectResult<T extends {select: any} ? T['select'] : never, T extends {selectCustom: any} ? T['selectCustom'] : {}, Entity[P]>
+    [P in keyof Entity]: SelectResult<
+        T extends {select: any} ? T['select'] : never,
+        T extends {selectCustom: any} ? T['selectCustom'] : {},
+        Entity[P]
+    >
 };
 type Select<T> = {[P in keyof T]?: T[P] extends Primitive ? 0 : T[P] extends any[] ? Find<T[P][number]> : Select<T[P]>};
 
@@ -93,7 +96,7 @@ type Filter<T> = {
         : T[P] extends any[]
         ? never
         : Filter<T[P]>
-};
+} & {OR?: Filter<T>[]; AND?: Filter<T>[]};
 type GQLFilter<T> = {
     [P in keyof T]?: T[P] extends Date
         ? DateOperators

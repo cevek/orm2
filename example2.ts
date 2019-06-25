@@ -117,7 +117,7 @@ Post.fields.set(
 const data = {
     Comment: [['Ivan', 2], ['John', 2]],
     PostLike: [['Vova', 2], ['Vasya', 2]],
-    Post: [['Hello', 'Alex', 2]], 
+    Post: [['Hello', 'Alex', 2]],
 };
 const res = query(
     Post,
@@ -139,6 +139,38 @@ const res = query(
                         name: 0,
                     },
                 },
+                where: {
+                    AND: [
+                        {
+                            OR: [
+                                {
+                                    user: {
+                                        name: 'a',
+                                    },
+                                },
+                                {
+                                    user: {
+                                        name: 'b',
+                                    },
+                                },
+                            ],
+                        },
+                        {
+                            OR: [
+                                {
+                                    user: {
+                                        name: 'x',
+                                    },
+                                },
+                                {
+                                    user: {
+                                        name: 'y',
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
             },
         },
         limit: 10,
@@ -152,3 +184,5 @@ const res = query(
     data,
 );
 console.log(res);
+
+// (author.name === "a" || author.email === "a") && author.lastName === 'y'

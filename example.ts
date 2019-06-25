@@ -175,20 +175,19 @@ const res = findPost({
     selectCustom: {
         score: {} as DBQuery,
     },
-    where: [
-        {
-            id: {eq: 1 as PostId},
-            title: 'x',
-            createdAt: {
-                between: [new Date(), new Date()],
-            },
-            postStat: {
-                views: {
-                    gt: 100,
-                },
+    where: {
+        id: {eq: 1 as PostId},
+        title: 'x',
+        author: {OR: [{name: ''}]},
+        createdAt: {
+            between: [new Date(), new Date()],
+        },
+        postStat: {
+            views: {
+                gt: 100,
             },
         },
-    ],
+    },
     order: {
         postStat: {
             views: 'asc',
