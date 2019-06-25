@@ -1,5 +1,7 @@
+import {reservedSQLWords} from './reserved.js';
+
 export type Ref = {from: Field; to: Field; collection: boolean; through: Field | undefined};
-export type Field = {table: Table; tableName: string | undefined; name: string; ref: Ref | undefined};
+export type Field = {table: Table; tableName: string; name: string; ref: Ref | undefined};
 export type Table = {name: string; id: Field; fields: Map<string, Field>};
 // declare const tableStructs: Map<string, Table>;
 type Hash = {[key: string]: Hash};
@@ -11,43 +13,67 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
     const subQueries = new Map<string, SubQuery>();
     const selectFields = extractFields(table, q.select, subQueries, tables);
     const conditions = q.where.map(where => extractFields(table, where, subQueries, tables));
-    const orders = q.order ? extractFields(table, q.order, subQueries, tables) : undefined;
+    const orders = q.order ? extractFields(table, q.order, subQueries, tables) : [];
 
     const sqlQuery = sql(
         'SELECT ',
         ...join<Field | string>(selectFields.map(field => field.key), ', '),
-        ', ',
-        table.id,
-        ' FROM `',
-        table.name,
-        '` ',
+        ...(subQueries.size > 0 ? [', ', table.id] : []),
+        ' FROM ',
+        escapeName(table.name),
+        ' ',
         [...tables]
-            .map(([name, join]) => sql('LEFT JOIN `', join.table.name, '` `', name, '` ON ', join.a, '=', join.b))
+            .map(([name, join]) =>
+                sql('LEFT JOIN ', escapeName(join.table.name), ' ', escapeName(name), ' ON ', join.a, '=', join.b),
+            )
             .join(' '),
+        ...(conditions.length > 0
+            ? [
+                  ' WHERE ',
+                  ...join<Field | string>(
+                      conditions.map(cond => sql(...join<Field | string>(cond.map(c => c.key), ' AND '))),
+                      ' OR ',
+                  ),
+              ]
+            : []),
+        ...(orders.length > 0
+            ? [
+                  ' ORDER ',
+                  ...join<Field | string>(
+                      orders.map(order => sql(order.key, ' ', order.value === 'desc' ? 'DESC' : 'ASC')),
+                      ' ',
+                  ),
+              ]
+            : []),
+        ...(q.limit !== undefined ? [' LIMIT ', String(q.limit)] : []),
+        ...(q.offset !== undefined ? [' OFFSET ', String(q.offset)] : []),
     );
 
     console.log({selectFields, conditions, orders, tables, subQueries, sqlQuery});
 
-    const items: unknown[] = data[table.name];
+    const rawItems: unknown[][] = data[table.name];
 
-    const itemIds = [];
     const itemsMap = new Map<number, unknown>();
-    for (const item of items) {
-        const id = (item as {id: number}).id;
-        itemsMap.set(id, item);
-        itemIds.push(id);
-    }
+    const result = prepareResult(rawItems, selectFields, itemsMap);
+    const itemIds = [...itemsMap.keys()];
     for (const [, subQuery] of subQueries) {
         selectSubQuery(subQuery, itemIds, itemsMap, data);
     }
-    return prepareResult(items, selectFields);
+    return {result, rawItems};
 }
 
-function prepareResult(items: unknown[], selectFields: {key: Field; value: unknown; path: string[]}[]) {
+function prepareResult(
+    items: unknown[][],
+    selectFields: {key: Field; value: unknown; path: string[]}[],
+    itemsMap: Map<number, unknown>,
+) {
     return items.map(item => {
+        const id = item[item.length - 1] as number;
         const resultItem: Hash = {};
+        itemsMap.set(id, resultItem);
         for (let k = 0; k < selectFields.length; k++) {
             const field = selectFields[k];
+            if (field.value === 'skip') continue;
             let dest = resultItem;
             for (let i = 0; i < field.path.length - 1; i++) {
                 // if (dest === undefined) dest = {};
@@ -93,19 +119,20 @@ function selectSubQuery(
         subQuery.ref.through;
     }
     (subFind.select as {
-        [key: string]: 0;
-    })[subQuery.ref.to.name] = 0;
+        [key: string]: string;
+    })[subQuery.ref.to.name] = 'skip';
+    const subFindKeyFieldIdx = Object.keys(subFind.select).length - 1;
     subFind.where = subFind.where || [];
     subFind.where.push({
         [subQuery.ref.to.name]: {
             in: itemIds,
         },
     });
-    const subItems = query(subQuery.ref.to.table, subFind, data);
-    for (const subItem of subItems) {
-        const itemId = (subItem as {
-            [key: string]: number;
-        })[subQuery.ref.to.name];
+    const {rawItems, result} = query(subQuery.ref.to.table, subFind, data);
+    for (let i = 0; i < result.length; i++) {
+        const subItem = result[i];
+        const rawItem = rawItems[i];
+        const itemId = rawItem[subFindKeyFieldIdx] as number;
         const item = itemsMap.get(itemId) as {
             [key: string]: unknown[];
         };
@@ -128,10 +155,17 @@ function sql(...args: (Field | string)[]) {
         if (typeof arg === 'string') {
             s += arg;
         } else {
-            s += `\`${arg.tableName}\`.\`${arg.name}\``;
+            s += `${escapeName(arg.tableName)}.${escapeName(arg.name)}`;
         }
     }
     return s;
+}
+
+function escapeName(name: string) {
+    // if (reservedSQLWords.has(name.toUpperCase())) {
+    return '"' + name + '"';
+    // }
+    // return name;
 }
 
 function extractFields(
@@ -154,7 +188,7 @@ function extractFields(
         const field = table.fields.get(key);
         if (field === undefined) throw new Error(`${key} doesn't exists in ${table.name}`);
         if (field.ref) {
-            const refTableName = tableName ? tableName + '_' + key : key;
+            const refTableName = tableName ? tableName + '.' + key : key;
             if (field.ref.collection) {
                 subQueries.set('refTableName', {
                     ref: field.ref,
