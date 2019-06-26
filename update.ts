@@ -6,7 +6,7 @@ export {};
 type Hash = {[key: string]: unknown};
 export function update(table: Table, data: Hash, idFrom?: {ref: Ref; id: number}) {
     const values: unknown[] = [];
-    let sqlQuery = 'UPDATE ' + escapeName(table.name) + ' SET ';
+    let sqlQuery = `UPDATE ${escapeName(table.name)} SET `;
     for (const key in data) {
         const value = data[key];
         const field = table.fields.get(key);
@@ -67,26 +67,17 @@ export function update(table: Table, data: Hash, idFrom?: {ref: Ref; id: number}
             continue;
         }
         if (values.length > 0) sqlQuery += ', ';
-        sqlQuery += escapeField(field) + '=$' + values.length;
+        sqlQuery += `${escapeField(field)}=$${values.length}`;
         values.push(value);
     }
     if (values.length === 0) return;
     sqlQuery += ' WHERE ';
     if (idFrom !== undefined) {
         sqlQuery +=
-            escapeField(table.id) +
-            '=(SELECT ' +
-            escapeField(idFrom.ref.from) +
-            ' FROM ' +
-            escapeName(idFrom.ref.from.table.name) +
-            ' WHERE ' +
-            escapeField(idFrom.ref.from.table.id) +
-            '=$' +
-            values.length +
-            ')';
+            `${escapeField(table.id)}=(SELECT ${escapeField(idFrom.ref.from)} FROM ${escapeName(idFrom.ref.from.table.name)} WHERE ${escapeField(idFrom.ref.from.table.id)}=$${values.length})`;
         values.push(idFrom.id);
     } else {
-        sqlQuery += escapeField(table.id) + '=$' + values.length;
+        sqlQuery += `${escapeField(table.id)}=$${values.length}`;
         values.push(data.id);
     }
     console.log(sqlQuery, values);

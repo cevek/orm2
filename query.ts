@@ -82,27 +82,17 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
         }
     }
 
-    sql += ' FROM ' + escapeName(table.name);
+    sql += ` FROM ${escapeName(table.name)}`;
 
     if (parent !== undefined && parent.ref.through !== undefined) {
-        sql +=
-            ' RIGHT JOIN ' +
-            escapeName(parent.ref.to.table.name) +
-            ' ON ' +
-            escapeField(table.id) +
-            '=' +
-            escapeField(parent.ref.through.ref!.from);
+        sql += ` RIGHT JOIN ${escapeName(parent.ref.to.table.name)} ON ${escapeField(table.id)}=${escapeField(
+            parent.ref.through.ref!.from,
+        )}`;
     }
     for (const [tableName, join] of tables) {
-        sql +=
-            ' LEFT JOIN ' +
-            escapeName(join.table.name) +
-            ' ' +
-            escapeName(tableName) +
-            ' ON ' +
-            escapeField(join.a) +
-            '=' +
-            escapeField(join.b);
+        sql += ` LEFT JOIN ${escapeName(join.table.name)} ${escapeName(tableName)} ON ${escapeField(
+            join.a,
+        )}=${escapeField(join.b)}`;
     }
     if (conditionGroup.items.length > 0) {
         sql += ' WHERE ';
@@ -111,10 +101,18 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
             for (let i = 0; i < group.items.length; i++) {
                 const item = group.items[i];
                 if (i > 0) {
-                    sql += ' ' + group.kind + ' ';
+                    sql += ` ${group.kind} `;
                 }
                 if (item.kind === 'field') {
-                    sql += escapeField(item.key);
+                    const ops = item.value as Required<AllOperators>;
+                    if (typeof ops === 'object' && ops !== null) {
+                        for (const op in ops) {
+                            sql += ` ${escapeField(item.key)} ${handleOperator(op as keyof AllOperators, ops, values)}`;
+                        }
+                    } else {
+                        sql += `${escapeField(item.key)} = $${values.length}`;
+                        values.push(item.value);
+                    }
                 } else {
                     iter(item, level + 1);
                 }
@@ -134,11 +132,11 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
         }
     }
     if (q.limit !== undefined) {
-        sql += ' LIMIT $' + values.length;
+        sql += ` LIMIT $${values.length}`;
         values.push(q.limit);
     }
     if (q.offset !== undefined) {
-        sql += ' OFFSET $' + values.length;
+        sql += ` OFFSET $${values.length}`;
         values.push(q.offset);
     }
 
@@ -226,7 +224,7 @@ function extractFields(
         const field = table.fields.get(key);
         if (field === undefined) throw new Error(`${key} doesn't exists in ${table.name}`);
         if (field.ref) {
-            const refTableName = tableName ? tableName + '.' + key : key;
+            const refTableName = tableName ? `${tableName}.${key}` : key;
             if (field.ref.collection) {
                 subQueries.set(refTableName, {
                     ref: field.ref,
@@ -252,6 +250,108 @@ function extractFields(
         }
     }
     return group;
+}
+
+type AllOperators = NumberOperators & StringOperators & BooleanOperators & DateOperators;
+
+function handleOperator(op: keyof Required<AllOperators>, operators: Required<AllOperators>, values: unknown[]) {
+    let sql = '';
+    switch (op) {
+        case 'eq': {
+            sql += `= $${values.length}`;
+            values.push(operators.eq);
+            return sql;
+        }
+        case 'between': {
+            const val = operators.between;
+            sql += `BETWEEN $${values.length} AND $${values.length + 1}`;
+            values.push(val[0], val[1]);
+            return sql;
+        }
+        case 'notBetween': {
+            const val = operators.notBetween;
+            sql += `NOT BETWEEN $${values.length} AND $${values.length + 1}`;
+            values.push(val[0], val[1]);
+            return sql;
+        }
+        case 'gt': {
+            sql += `> $${values.length}`;
+            values.push(operators.gt);
+            return sql;
+        }
+        case 'gte': {
+            sql += `>= $${values.length}`;
+            values.push(operators.gte);
+            return sql;
+        }
+        case 'lt': {
+            sql += `< $${values.length}`;
+            values.push(operators.lt);
+            return sql;
+        }
+        case 'lte': {
+            sql += `<= $${values.length}`;
+            values.push(operators.lte);
+            return sql;
+        }
+        case 'ne': {
+            sql += `<> $${values.length}`;
+            values.push(operators.ne);
+            return sql;
+        }
+        case 'in': {
+            sql += `= ANY ($${values.length})`;
+            values.push(operators.in);
+            return sql;
+        }
+        case 'notIn': {
+            sql += `<> ANY ($${values.length})`;
+            values.push(operators.notIn);
+            return sql;
+        }
+        case 'like': {
+            sql += `LIKE $${values.length}`;
+            values.push(operators.like);
+            return sql;
+        }
+        case 'notLike': {
+            sql += `NOT LIKE $${values.length}`;
+            values.push(operators.notLike);
+            return sql;
+        }
+        case 'iLike': {
+            sql += `ILIKE $${values.length}`;
+            values.push(operators.iLike);
+            return sql;
+        }
+        case 'notILike': {
+            sql += `NOT ILIKE $${values.length}`;
+            values.push(operators.notILike);
+            return sql;
+        }
+        case 'regexp': {
+            sql += `~ $${values.length}`;
+            values.push(operators.regexp);
+            return sql;
+        }
+        case 'notRegexp': {
+            sql += `!~ $${values.length}`;
+            values.push(operators.notRegexp);
+            return sql;
+        }
+        case 'iRegexp': {
+            sql += `~* $${values.length}`;
+            values.push(operators.iRegexp);
+            return sql;
+        }
+        case 'notIRegexp': {
+            sql += `!~* $${values.length}`;
+            values.push(operators.notIRegexp);
+            return sql;
+        }
+        default:
+            throw never(op);
+    }
 }
 
 export function createField(tableName: string, name: string, table: Table, ref?: Ref, edge?: Field): Field {
@@ -286,7 +386,7 @@ export function createRefField(table: Table, name: string, idOf: Table): Field {
 }
 
 export function escapeName(name: string) {
-    return '"' + name + '"';
+    return `"${name}"`;
     // const lowerCase = name.toLowerCase();
     // if (lowerCase !== name || reservedSQLWords.has(lowerCase)) {
     //     return '"' + name + '"';
@@ -294,9 +394,8 @@ export function escapeName(name: string) {
     // return name;
 }
 export function escapeField(field: Field) {
-    return escapeName(field.tableName) + '.' + escapeName(field.name);
+    return `${escapeName(field.tableName)}.${escapeName(field.name)}`;
 }
-
 
 export class DBRaw {
     constructor(public readonly raw: string) {}
@@ -320,8 +419,13 @@ class DBQueries {
 }
 
 export function sql(strs: TemplateStringsArray, ...inserts: QueryValue[]) {
-	return new DBQuery(strs, inserts);
+    return new DBQuery(strs, inserts);
 }
 export function joinQueries(queries: DBQuery[], separator?: DBQuery): DBQuery {
-	return sql`${new DBQueries(queries, separator)}`;
+    return sql`${new DBQueries(queries, separator)}`;
+}
+
+/* istanbul ignore next */
+function never(value?: never): never {
+    throw new Error(`Never possible value`);
 }

@@ -65,24 +65,15 @@ export function insert(
         if (params !== undefined) {
             const {noErrorIfConflict} = params;
             if (noErrorIfConflict === true || typeof noErrorIfConflict === 'object') {
-                onConflictFields =
-                    ' ON CONFLICT ' +
-                    (noErrorIfConflict === true ? '' : escapeField(noErrorIfConflict)) +
-                    ' DO NOTHING';
+                onConflictFields = ` ON CONFLICT ${
+                    noErrorIfConflict === true ? '' : escapeField(noErrorIfConflict)
+                } DO NOTHING`;
             }
         }
-        sql +=
-            'INSERT INTO ' +
-            escapeName(table.name) +
-            ' (' +
-            namesSql +
-            ') VALUES (' +
-            valuesSql +
-            ')' +
-            onConflictFields +
-            ' RETURNING ' +
-            escapeField(table.id) +
-            ';\n';
+        sql += `INSERT INTO ${escapeName(
+            table.name,
+        )} (${namesSql}) VALUES (${valuesSql})${onConflictFields} RETURNING ${escapeField(table.id)};
+`;
     }
     console.log(sql, values);
     const id = table.name as any;
