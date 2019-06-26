@@ -82,17 +82,16 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
         }
     }
 
-    sql += ` FROM ${escapeName(table.name)}`;
+    sql += ` FROM ${escapeTable(table)}`;
 
     if (parent !== undefined && parent.ref.through !== undefined) {
-        sql += ` RIGHT JOIN ${escapeName(parent.ref.to.table.name)} ON ${escapeField(table.id)}=${escapeField(
-            parent.ref.through.ref!.from,
-        )}`;
+        const b = escapeField(parent.ref.through.ref!.from);
+        sql += ` RIGHT JOIN ${escapeTable(parent.ref.to.table)} ON ${escapeField(table.id)}=${b}`;
     }
     for (const [tableName, join] of tables) {
-        sql += ` LEFT JOIN ${escapeName(join.table.name)} ${escapeName(tableName)} ON ${escapeField(
-            join.a,
-        )}=${escapeField(join.b)}`;
+        const a = escapeField(join.a);
+        const b = escapeField(join.b);
+        sql += ` LEFT JOIN ${escapeTable(join.table)} ${escapeName(tableName)} ON ${a}=${b}`;
     }
     if (conditionGroup.items.length > 0) {
         sql += ' WHERE ';
@@ -393,6 +392,16 @@ export function escapeName(name: string) {
     // }
     // return name;
 }
+
+export function escapeTable(table: Table) {
+    return escapeName(table.name);
+    // const lowerCase = name.toLowerCase();
+    // if (lowerCase !== name || reservedSQLWords.has(lowerCase)) {
+    //     return '"' + name + '"';
+    // }
+    // return name;
+}
+
 export function escapeField(field: Field) {
     return `${escapeName(field.tableName)}.${escapeName(field.name)}`;
 }

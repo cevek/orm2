@@ -1,4 +1,4 @@
-import {Table, escapeName, escapeField, DBRaw, Field} from './query.js';
+import {Table, escapeTable, escapeField, DBRaw, Field} from './query.js';
 
 export {};
 
@@ -58,21 +58,20 @@ export function insert(
                 valuesSql += ', ';
             }
             namesSql += escapeField(field);
-            valuesSql += '$' + values.length;
+            valuesSql += `$${values.length}`;
             values.push(value);
         }
         let onConflictFields = '';
         if (params !== undefined) {
             const {noErrorIfConflict} = params;
             if (noErrorIfConflict === true || typeof noErrorIfConflict === 'object') {
-                onConflictFields = ` ON CONFLICT ${
-                    noErrorIfConflict === true ? '' : escapeField(noErrorIfConflict)
-                } DO NOTHING`;
+                const f = noErrorIfConflict === true ? '' : escapeField(noErrorIfConflict);
+                onConflictFields = ` ON CONFLICT ${f} DO NOTHING`;
             }
         }
-        sql += `INSERT INTO ${escapeName(
-            table.name,
-        )} (${namesSql}) VALUES (${valuesSql})${onConflictFields} RETURNING ${escapeField(table.id)};
+        const tbl = escapeTable(table);
+        const idField = escapeField(table.id);
+        sql += `INSERT INTO ${tbl} (${namesSql}) VALUES (${valuesSql})${onConflictFields} RETURNING ${idField};
 `;
     }
     console.log(sql, values);
