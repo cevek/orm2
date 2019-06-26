@@ -1,9 +1,14 @@
-import {Table, escapeName, escapeField} from './query.js';
+import {Table, escapeName, escapeField, raw} from './query.js';
 
 export {};
 
 type Hash = {[key: string]: unknown};
-export function insert(table: Table, dataArr: Hash[], parentIds = new Map<Table, number>()) {
+export function insert(
+    table: Table,
+    dataArr: Hash[],
+    params?: {noErrorIfConflict?: DBQuery | boolean},
+    parentIds = new Map<Table, number>(),
+) {
     let sql = '';
     const afterInsert: {table: Table; data: Hash[]}[] = [];
     const values: unknown[] = [];
@@ -34,7 +39,7 @@ export function insert(table: Table, dataArr: Hash[], parentIds = new Map<Table,
                     }
                     continue;
                 } else {
-                    value = insert(field.ref.to.table, [value as Hash], parentIds);
+                    value = insert(field.ref.to.table, [value as Hash], {}, parentIds);
                     field = field.ref.from;
                 }
             }
@@ -56,14 +61,32 @@ export function insert(table: Table, dataArr: Hash[], parentIds = new Map<Table,
             valuesSql += '$' + values.length;
             values.push(value);
         }
+        let onConflictFields = '';
+        if (params !== undefined) {
+            const {noErrorIfConflict} = params;
+            if (noErrorIfConflict === true || typeof noErrorIfConflict === 'object') {
+                onConflictFields =
+                    ' ON CONFLICT ' + (noErrorIfConflict === true ? '' : raw(noErrorIfConflict)) + ' DO NOTHING';
+            }
+        }
         sql +=
-            'INSERT INTO ' + escapeName(table.name) + ' (' + namesSql + ') VALUES (' + valuesSql + ') RETURNING id;\n';
+            'INSERT INTO ' +
+            escapeName(table.name) +
+            ' (' +
+            namesSql +
+            ') VALUES (' +
+            valuesSql +
+            ')' +
+            onConflictFields +
+            ' RETURNING ' +
+            escapeField(table.id) +
+            ';\n';
     }
     console.log(sql, values);
     const id = table.name as any;
     parentIds.set(table, id);
     for (const item of afterInsert) {
-        insert(item.table, item.data, parentIds);
+        insert(item.table, item.data, {}, parentIds);
     }
     return id;
 }

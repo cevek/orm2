@@ -285,6 +285,9 @@ export function createRefField(table: Table, name: string, idOf: Table): Field {
     };
 }
 
+export function raw(raw: DBQuery) {
+    return raw.q;
+}
 export function escapeName(name: string) {
     return '"' + name + '"';
     // const lowerCase = name.toLowerCase();
