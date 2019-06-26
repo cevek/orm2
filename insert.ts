@@ -1,4 +1,4 @@
-import {Table, escapeTable, escapeField, DBRaw, Field} from './query.js';
+import {Table, escapeTable, escapeField, DBRaw, Field, val} from './query.js';
 
 export {};
 
@@ -58,8 +58,7 @@ export function insert(
                 valuesSql += ', ';
             }
             namesSql += escapeField(field);
-            valuesSql += `$${values.length}`;
-            values.push(value);
+            valuesSql += val(values, value);
         }
         let onConflictFields = '';
         if (params !== undefined) {

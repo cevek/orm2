@@ -1,4 +1,4 @@
-import {Table, escapeField, escapeTable, sql, Ref} from './query.js';
+import {Table, escapeField, escapeTable, sql, Ref, val} from './query.js';
 import {remove} from './remove.js';
 import {insert} from './insert.js';
 
@@ -67,8 +67,7 @@ export function update(table: Table, data: Hash, idFrom?: {ref: Ref; id: number}
             continue;
         }
         if (values.length > 0) sqlQuery += ', ';
-        sqlQuery += `${escapeField(field)}=$${values.length}`;
-        values.push(value);
+        sqlQuery += `${escapeField(field)}=${val(values, value)}`;
     }
     if (values.length === 0) return;
     sqlQuery += ' WHERE ';
@@ -76,11 +75,9 @@ export function update(table: Table, data: Hash, idFrom?: {ref: Ref; id: number}
         const from = escapeTable(idFrom.ref.from.table);
         const idField = escapeField(idFrom.ref.from.table.id);
         const tbl = escapeField(idFrom.ref.from);
-        sqlQuery += `${escapeField(table.id)}=(SELECT ${tbl} FROM ${from} WHERE ${idField}=$${values.length})`;
-        values.push(idFrom.id);
+        sqlQuery += `${escapeField(table.id)}=(SELECT ${tbl} FROM ${from} WHERE ${idField}=${val(values, idFrom.id)})`;
     } else {
-        sqlQuery += `${escapeField(table.id)}=$${values.length}`;
-        values.push(data.id);
+        sqlQuery += `${escapeField(table.id)}=${val(values, data.id)}`;
     }
     console.log(sqlQuery, values);
 }

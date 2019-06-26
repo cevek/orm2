@@ -109,8 +109,7 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
                             sql += ` ${escapeField(item.key)} ${handleOperator(op as keyof AllOperators, ops, values)}`;
                         }
                     } else {
-                        sql += `${escapeField(item.key)} = $${values.length}`;
-                        values.push(item.value);
+                        sql += `${escapeField(item.key)} = ${val(values, item.value)}`;
                     }
                 } else {
                     iter(item, level + 1);
@@ -131,12 +130,10 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
         }
     }
     if (q.limit !== undefined) {
-        sql += ` LIMIT $${values.length}`;
-        values.push(q.limit);
+        sql += ` LIMIT ${val(values, q.limit)}`;
     }
     if (q.offset !== undefined) {
-        sql += ` OFFSET $${values.length}`;
-        values.push(q.offset);
+        sql += ` OFFSET ${val(values, q.offset)}`;
     }
 
     console.log({selectFields, conditionGroup, orders, tables, subQueries, sql, values});
@@ -254,100 +251,43 @@ function extractFields(
 type AllOperators = NumberOperators & StringOperators & BooleanOperators & DateOperators;
 
 function handleOperator(op: keyof Required<AllOperators>, operators: Required<AllOperators>, values: unknown[]) {
-    let sql = '';
     switch (op) {
-        case 'eq': {
-            sql += `= $${values.length}`;
-            values.push(operators.eq);
-            return sql;
-        }
-        case 'between': {
-            const val = operators.between;
-            sql += `BETWEEN $${values.length} AND $${values.length + 1}`;
-            values.push(val[0], val[1]);
-            return sql;
-        }
-        case 'notBetween': {
-            const val = operators.notBetween;
-            sql += `NOT BETWEEN $${values.length} AND $${values.length + 1}`;
-            values.push(val[0], val[1]);
-            return sql;
-        }
-        case 'gt': {
-            sql += `> $${values.length}`;
-            values.push(operators.gt);
-            return sql;
-        }
-        case 'gte': {
-            sql += `>= $${values.length}`;
-            values.push(operators.gte);
-            return sql;
-        }
-        case 'lt': {
-            sql += `< $${values.length}`;
-            values.push(operators.lt);
-            return sql;
-        }
-        case 'lte': {
-            sql += `<= $${values.length}`;
-            values.push(operators.lte);
-            return sql;
-        }
-        case 'ne': {
-            sql += `<> $${values.length}`;
-            values.push(operators.ne);
-            return sql;
-        }
-        case 'in': {
-            sql += `= ANY ($${values.length})`;
-            values.push(operators.in);
-            return sql;
-        }
-        case 'notIn': {
-            sql += `<> ANY ($${values.length})`;
-            values.push(operators.notIn);
-            return sql;
-        }
-        case 'like': {
-            sql += `LIKE $${values.length}`;
-            values.push(operators.like);
-            return sql;
-        }
-        case 'notLike': {
-            sql += `NOT LIKE $${values.length}`;
-            values.push(operators.notLike);
-            return sql;
-        }
-        case 'iLike': {
-            sql += `ILIKE $${values.length}`;
-            values.push(operators.iLike);
-            return sql;
-        }
-        case 'notILike': {
-            sql += `NOT ILIKE $${values.length}`;
-            values.push(operators.notILike);
-            return sql;
-        }
-        case 'regexp': {
-            sql += `~ $${values.length}`;
-            values.push(operators.regexp);
-            return sql;
-        }
-        case 'notRegexp': {
-            sql += `!~ $${values.length}`;
-            values.push(operators.notRegexp);
-            return sql;
-        }
-        case 'iRegexp': {
-            sql += `~* $${values.length}`;
-            values.push(operators.iRegexp);
-            return sql;
-        }
-        case 'notIRegexp': {
-            sql += `!~* $${values.length}`;
-            values.push(operators.notIRegexp);
-            return sql;
-        }
+        case 'eq':
+            return `= ${val(values, operators.eq)}`;
+        case 'between':
+            return `BETWEEN ${val(values, operators.between[0])} AND ${val(values, operators.between[1])}`;
+        case 'notBetween':
+            return `NOT BETWEEN ${val(values, operators.notBetween[0])} AND ${val(values, operators.notBetween[1])}`;
+        case 'gt':
+            return `> ${val(values, operators.gt)}`;
+        case 'gte':
+            return `>= ${val(values, operators.gte)}`;
+        case 'lt':
+            return `< ${val(values, operators.lt)}`;
+        case 'lte':
+            return `<= ${val(values, operators.lte)}`;
+        case 'ne':
+            return `<> ${val(values, operators.ne)}`;
+        case 'in':
+            return `= ANY ${val(values, operators.in)}`;
+        case 'notIn':
+            return `<> ANY ${val(values, operators.notIn)}`;
+        case 'like':
+            return `LIKE ${val(values, operators.like)}`;
+        case 'notLike':
+            return `NOT LIKE ${val(values, operators.notLike)}`;
+        case 'iLike':
+            return `ILIKE ${val(values, operators.iLike)}`;
+        case 'notILike':
+            return `NOT ILIKE ${val(values, operators.notILike)}`;
+        case 'regexp':
+            return `~ ${val(values, operators.regexp)}`;
+        case 'notRegexp':
+            return `!~ ${val(values, operators.notRegexp)}`;
+        case 'iRegexp':
+            return `~* ${val(values, operators.iRegexp)}`;
+        case 'notIRegexp':
+            return `!~* ${val(values, operators.notIRegexp)}`;
         default:
             throw never(op);
     }
@@ -425,6 +365,11 @@ class DBQuery {
 
 class DBQueries {
     constructor(public readonly queries: ReadonlyArray<DBQuery>, public readonly separator: DBQuery | undefined) {}
+}
+
+export function val(values: unknown[], value: unknown) {
+    values.push(value);
+    return `$${values.length - 1}`;
 }
 
 export function sql(strs: TemplateStringsArray, ...inserts: QueryValue[]) {
