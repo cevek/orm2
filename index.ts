@@ -66,7 +66,7 @@ type SelectConstraintArray<T, Entity> = Entity extends any[]
     : never;
 
 type SelectResult<T, C, Entity, K extends keyof Entity = Extract<keyof Entity, keyof T>> = {
-    [P in K]: Entity[P] extends Primitive
+    [P in K]-?: Entity[P] extends Primitive
         ? Entity[P]
         : Entity[P] extends any[]
         ? SelectResultArr<P extends keyof T ? T[P] : never, Entity[P]>
@@ -84,27 +84,30 @@ type Select<T> = {[P in keyof T]?: T[P] extends Primitive ? 0 : T[P] extends any
 
 type Sort<T> = {[P in keyof T]?: T[P] extends Primitive ? 'asc' | 'desc' : T[P] extends any[] ? never : Sort<T[P]>};
 
+type NonUndefined<T> = T extends undefined ? never : T;
+
 type Filter<T> = {
-    [P in keyof T]?: T[P] extends Date
-        ? TransformOperator<DateOperators, T[P]>
-        : T[P] extends string
-        ? TransformOperator<StringOperators, T[P]>
-        : T[P] extends number
-        ? TransformOperator<NumberOperators, T[P]>
-        : T[P] extends boolean
-        ? TransformOperator<BooleanOperators, T[P]>
+    [P in keyof T]?: T[P] extends (Date | undefined)
+        ? TransformOperator<DateOperators, NonUndefined<T[P]>>
+        : T[P] extends (string | undefined)
+        ? TransformOperator<StringOperators, NonUndefined<T[P]>>
+        : T[P] extends (number | undefined)
+        ? TransformOperator<NumberOperators, NonUndefined<T[P]>>
+        : T[P] extends (boolean | undefined)
+        ? TransformOperator<BooleanOperators, NonUndefined<T[P]>>
         : T[P] extends any[]
         ? never
         : Filter<T[P]>
 } & {OR?: Filter<T>[]; AND?: Filter<T>[]};
+
 type GQLFilter<T> = {
-    [P in keyof T]?: T[P] extends Date
+    [P in keyof T]?: T[P] extends (Date | undefined)
         ? DateOperators
-        : T[P] extends string
+        : T[P] extends (string | undefined)
         ? StringOperators
-        : T[P] extends number
+        : T[P] extends (number | undefined)
         ? NumberOperators
-        : T[P] extends boolean
+        : T[P] extends (boolean | undefined)
         ? BooleanOperators
         : GQLFilter<T[P]>
 };

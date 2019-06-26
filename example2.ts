@@ -1,4 +1,5 @@
-import {Table, createField, query} from './query.js';
+import {Table, createField, query, createIdField, createRefField} from './query.js';
+import {insert} from './insert.js';
 
 export {};
 
@@ -41,12 +42,12 @@ const Comment: Table = {
     name: 'Comment',
 };
 
-User.fields.set('id', createField(User.name, 'id', User));
+User.fields.set('id', createIdField(User));
 User.fields.set('name', createField(User.name, 'name', User));
 
-Comment.fields.set('id', createField(Comment.name, 'id', Comment));
+Comment.fields.set('id', createIdField(Comment));
 Comment.fields.set('text', createField(Comment.name, 'text', Comment));
-Comment.fields.set('userId', createField(Comment.name, 'userId', Comment));
+Comment.fields.set('userId', createRefField(Comment, 'userId', User));
 Comment.fields.set(
     'user',
     createField(Comment.name, 'user', Comment, {
@@ -56,10 +57,11 @@ Comment.fields.set(
         to: User.fields.get('id')!,
     }),
 );
+Comment.fields.get('userId')!.edge = Comment.fields.get('user');
 
-PostLike.fields.set('id', createField(PostLike.name, 'id', PostLike));
-PostLike.fields.set('postId', createField(PostLike.name, 'postId', PostLike));
-PostLike.fields.set('userId', createField(PostLike.name, 'userId', PostLike));
+PostLike.fields.set('id', createIdField(PostLike));
+PostLike.fields.set('postId', createRefField(PostLike, 'postId', Post));
+PostLike.fields.set('userId', createRefField(PostLike, 'userId', User));
 PostLike.fields.set(
     'user',
     createField(Post.name, 'user', Post, {
@@ -69,10 +71,11 @@ PostLike.fields.set(
         to: User.fields.get('id')!,
     }),
 );
+PostLike.fields.get('userId')!.edge = PostLike.fields.get('user');
 
-PostComment.fields.set('id', createField(PostComment.name, 'id', PostComment));
-PostComment.fields.set('postId', createField(PostComment.name, 'postId', PostComment));
-PostComment.fields.set('commentId', createField(PostComment.name, 'commentId', PostComment));
+PostComment.fields.set('id', createIdField(PostComment));
+PostComment.fields.set('postId', createRefField(PostComment, 'postId', Post));
+PostComment.fields.set('commentId', createRefField(PostComment, 'commentId', Comment));
 PostComment.fields.set(
     'comment',
     createField(PostComment.name, 'comment', PostComment, {
@@ -82,10 +85,11 @@ PostComment.fields.set(
         to: Comment.fields.get('id')!,
     }),
 );
+PostComment.fields.get('commentId')!.edge = PostComment.fields.get('comment');
 
-Post.fields.set('id', createField(Post.name, 'id', Post));
+Post.fields.set('id', createIdField(Post));
 Post.fields.set('title', createField(Post.name, 'title', Post));
-Post.fields.set('authorId', createField(Post.name, 'authorId', Post));
+Post.fields.set('authorId', createRefField(Post, 'authorId', User));
 Post.fields.set(
     'author',
     createField(Post.name, 'author', Post, {
@@ -95,6 +99,8 @@ Post.fields.set(
         to: User.fields.get('id')!,
     }),
 );
+Post.fields.get('authorId')!.edge = Post.fields.get('author');
+
 Post.fields.set(
     'likes',
     createField(Post.name, 'likes', Post, {
@@ -184,5 +190,17 @@ const res = query(
     data,
 );
 console.log(res);
+
+insert(Post, [
+    {
+        title: 'Hello',
+        authorId: 'auto',
+        author: {
+            name: 'Alex',
+        },
+        likes: [{postId: 'auto', userId: 'auto', user: {name: 'Vova'}}],
+        comments: [{userId: 'auto', text: 'Hey', user: {name: 'Slava'}}],
+    },
+]);
 
 // (author.name === "a" || author.email === "a") && author.lastName === 'y'

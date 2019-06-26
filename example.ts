@@ -10,7 +10,7 @@ interface Post {
     readonly id: PostId;
     authorId: UserId;
     author: User;
-    createdAt: Date;
+    createdAt?: Date;
     text: string;
     title: string;
     postStatId: StatId;
@@ -88,7 +88,7 @@ insertPost({authorId: userId, postStatId: db.stat.lastId, title: '', createdAt: 
 insertPost({
     authorId: userId,
     title: '',
-    createdAt: new Date(),
+    // createdAt: new Date(),
     text: '',
     postStatId: db.stat.lastId,
     postStat: {
@@ -141,6 +141,7 @@ const res = findPost({
     select: {
         id: 0,
         title: 0,
+        createdAt: 0,
         author: {
             name: 0,
         },
@@ -199,6 +200,7 @@ const res = findPost({
 res.score;
 res.id;
 res.author.name;
+res.createdAt;
 res.comments;
 res.comments[0];
 res.comments.map(x => x.subcomments.map(sub => sub.author.name));

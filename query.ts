@@ -1,7 +1,17 @@
 import {reservedSQLWords} from './reserved.js';
 
 export type Ref = {from: Field; to: Field; collection: boolean; through: Field | undefined};
-export type Field = {table: Table; tableName: string; name: string; ref: Ref | undefined};
+export type Field = {
+    table: Table;
+    tableName: string;
+    name: string;
+    ref: Ref | undefined;
+    idOf: Table | undefined;
+    edge: Field | undefined;
+    readonly: boolean;
+    nullable: boolean;
+    hasDefault: boolean;
+};
 export type Table = {name: string; id: Field; fields: Map<string, Field>};
 type Hash = {[key: string]: Hash};
 type SubQuery = {ref: Ref; parentFieldName: string; find: Find<unknown, unknown>};
@@ -244,11 +254,38 @@ function extractFields(
     return group;
 }
 
-export function createField(tableName: string, name: string, table: Table, ref?: Ref): Field {
-    return {table, tableName, name, ref};
+export function createField(tableName: string, name: string, table: Table, ref?: Ref, edge?: Field): Field {
+    return {table, tableName, name, ref, idOf: undefined, hasDefault: false, nullable: false, readonly: false, edge};
 }
 
-function escapeName(name: string) {
+export function createIdField(table: Table): Field {
+    return {
+        table,
+        tableName: table.name,
+        name,
+        ref: undefined,
+        idOf: table,
+        edge: undefined,
+        hasDefault: true,
+        nullable: false,
+        readonly: true,
+    };
+}
+export function createRefField(table: Table, name: string, idOf: Table): Field {
+    return {
+        table,
+        tableName: table.name,
+        name,
+        ref: undefined,
+        idOf,
+        edge: undefined,
+        hasDefault: true,
+        nullable: false,
+        readonly: true,
+    };
+}
+
+export function escapeName(name: string) {
     return '"' + name + '"';
     // const lowerCase = name.toLowerCase();
     // if (lowerCase !== name || reservedSQLWords.has(lowerCase)) {
@@ -256,6 +293,6 @@ function escapeName(name: string) {
     // }
     // return name;
 }
-function escapeField(field: Field) {
+export function escapeField(field: Field) {
     return escapeName(field.tableName) + '.' + escapeName(field.name);
 }
