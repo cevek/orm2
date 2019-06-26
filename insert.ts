@@ -1,4 +1,4 @@
-import {Table, escapeName, escapeField, raw} from './query.js';
+import {Table, escapeName, escapeField, DBRaw, Field} from './query.js';
 
 export {};
 
@@ -6,7 +6,7 @@ type Hash = {[key: string]: unknown};
 export function insert(
     table: Table,
     dataArr: Hash[],
-    params?: {noErrorIfConflict?: DBQuery | boolean},
+    params?: {noErrorIfConflict?: Field | boolean},
     parentIds = new Map<Table, number>(),
 ) {
     let sql = '';
@@ -39,7 +39,7 @@ export function insert(
                     }
                     continue;
                 } else {
-                    value = insert(field.ref.to.table, [value as Hash], {}, parentIds);
+                    value = insert(field.ref.to.table, [value as Hash], undefined, parentIds);
                     field = field.ref.from;
                 }
             }
@@ -66,7 +66,9 @@ export function insert(
             const {noErrorIfConflict} = params;
             if (noErrorIfConflict === true || typeof noErrorIfConflict === 'object') {
                 onConflictFields =
-                    ' ON CONFLICT ' + (noErrorIfConflict === true ? '' : raw(noErrorIfConflict)) + ' DO NOTHING';
+                    ' ON CONFLICT ' +
+                    (noErrorIfConflict === true ? '' : escapeField(noErrorIfConflict)) +
+                    ' DO NOTHING';
             }
         }
         sql +=
@@ -86,7 +88,7 @@ export function insert(
     const id = table.name as any;
     parentIds.set(table, id);
     for (const item of afterInsert) {
-        insert(item.table, item.data, {}, parentIds);
+        insert(item.table, item.data, undefined, parentIds);
     }
     return id;
 }

@@ -1,5 +1,6 @@
 import {Table, createField, query, createIdField, createRefField} from './query.js';
 import {insert} from './insert.js';
+import {update} from './update.js';
 
 export {};
 
@@ -202,5 +203,23 @@ insert(Post, [
         comments: [{userId: 'auto', text: 'Hey', user: {name: 'Slava'}}],
     },
 ]);
+
+update(Post, {
+    id: 1,
+    title: 'Hello',
+    author: {
+        name: 'Alex',
+    },
+    likes: {
+        create: [{postId: 'auto', userId: 'auto', user: {name: 'Vova'}}],
+        update: [{id: 11, user: {name: 'Sergio'}}],
+        remove: [{id: 10}],
+    },
+    comments: {
+        create: [{text: 'Hey', userId: 'auto', user: {name: 'Slava'}}],
+        update: [{id: 111, text: 'Wow', user: {name: 'Steven'}}],
+        remove: [{id: 110}],
+    },
+});
 
 // (author.name === "a" || author.email === "a") && author.lastName === 'y'

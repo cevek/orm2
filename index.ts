@@ -112,7 +112,7 @@ type GQLFilter<T> = {
         : GQLFilter<T[P]>
 };
 
-type DBQuery = {readonly q: string};
+type DBQuery = {readonly q: string; readonly values: readonly unknown[]};
 type TransformOperator<Op, T> =
     | {[P in keyof Op]: Op[P] extends (any[] | undefined) ? TransformOperator<Op[P], T> : (T | DBQuery)}
     | T;

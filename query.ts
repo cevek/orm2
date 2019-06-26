@@ -262,7 +262,7 @@ export function createIdField(table: Table): Field {
     return {
         table,
         tableName: table.name,
-        name,
+        name: 'id',
         ref: undefined,
         idOf: table,
         edge: undefined,
@@ -285,9 +285,6 @@ export function createRefField(table: Table, name: string, idOf: Table): Field {
     };
 }
 
-export function raw(raw: DBQuery) {
-    return raw.q;
-}
 export function escapeName(name: string) {
     return '"' + name + '"';
     // const lowerCase = name.toLowerCase();
@@ -298,4 +295,33 @@ export function escapeName(name: string) {
 }
 export function escapeField(field: Field) {
     return escapeName(field.tableName) + '.' + escapeName(field.name);
+}
+
+
+export class DBRaw {
+    constructor(public readonly raw: string) {}
+}
+
+type QueryValue = DBValue | DBRaw | DBQuery | DBQueries | Field | Table;
+type DBValue = DBValueBase | DBValueBase[];
+type DBValueBase = string | number | boolean | Date | undefined | null;
+
+class DBQuery {
+    constructor(
+        //@ts-ignore
+        private readonly parts: ReadonlyArray<string>,
+        //@ts-ignore
+        private readonly values: ReadonlyArray<QueryValue>,
+    ) {}
+}
+
+class DBQueries {
+    constructor(public readonly queries: ReadonlyArray<DBQuery>, public readonly separator: DBQuery | undefined) {}
+}
+
+export function sql(strs: TemplateStringsArray, ...inserts: QueryValue[]) {
+	return new DBQuery(strs, inserts);
+}
+export function joinQueries(queries: DBQuery[], separator?: DBQuery): DBQuery {
+	return sql`${new DBQueries(queries, separator)}`;
 }
