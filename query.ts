@@ -1,4 +1,5 @@
 import {reservedSQLWords} from './reserved.js';
+import { Type } from 'ts-type-ast';
 
 export type Ref = {from: Field; to: Field; collection: boolean; through: Field | undefined};
 export type Field = {
@@ -11,6 +12,7 @@ export type Field = {
     readonly: boolean;
     nullable: boolean;
     hasDefault: boolean;
+    type: Type;
 };
 export type Table = {name: string; id: Field; fields: Map<string, Field>};
 type Hash = {[key: string]: Hash};
@@ -294,7 +296,18 @@ function handleOperator(op: keyof Required<AllOperators>, operators: Required<Al
 }
 
 export function createField(tableName: string, name: string, table: Table, ref?: Ref, edge?: Field): Field {
-    return {table, tableName, name, ref, idOf: undefined, hasDefault: false, nullable: false, readonly: false, edge};
+    return {
+        table,
+        tableName,
+        name,
+        ref,
+        idOf: undefined,
+        hasDefault: false,
+        nullable: false,
+        readonly: false,
+        edge,
+        type: {} as Type,
+    };
 }
 
 export function createIdField(table: Table): Field {
@@ -308,6 +321,7 @@ export function createIdField(table: Table): Field {
         hasDefault: true,
         nullable: false,
         readonly: true,
+        type: {} as Type,
     };
 }
 export function createRefField(table: Table, name: string, idOf: Table): Field {
@@ -321,6 +335,7 @@ export function createRefField(table: Table, name: string, idOf: Table): Field {
         hasDefault: true,
         nullable: false,
         readonly: true,
+        type: {} as Type,
     };
 }
 
