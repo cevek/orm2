@@ -1,4 +1,4 @@
-import {Table, escapeTable, escapeField, DBRaw, Field, val} from './query.js';
+import {Table, escapeTable, escapeField, DBRaw, Field, val} from './query';
 
 export {};
 

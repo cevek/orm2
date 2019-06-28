@@ -1,4 +1,4 @@
-import {Table, escapeField, escapeTable, val} from './query.js';
+import {Table, escapeField, escapeTable, val} from './query';
 export {};
 type Hash = {[key: string]: unknown};
 

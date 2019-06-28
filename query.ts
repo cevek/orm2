@@ -1,5 +1,4 @@
-import {reservedSQLWords} from './reserved.js';
-import { Type } from 'ts-type-ast';
+import {Prop} from 'ts-type-ast';
 
 export type Ref = {from: Field; to: Field; collection: boolean; through: Field | undefined};
 export type Field = {
@@ -12,7 +11,7 @@ export type Field = {
     readonly: boolean;
     nullable: boolean;
     hasDefault: boolean;
-    type: Type;
+    type: Prop;
 };
 export type Table = {name: string; id: Field; fields: Map<string, Field>};
 type Hash = {[key: string]: Hash};
@@ -306,7 +305,7 @@ export function createField(tableName: string, name: string, table: Table, ref?:
         nullable: false,
         readonly: false,
         edge,
-        type: {} as Type,
+        type: {} as Prop,
     };
 }
 
@@ -321,7 +320,7 @@ export function createIdField(table: Table): Field {
         hasDefault: true,
         nullable: false,
         readonly: true,
-        type: {} as Type,
+        type: {} as Prop,
     };
 }
 export function createRefField(table: Table, name: string, idOf: Table): Field {
@@ -335,7 +334,7 @@ export function createRefField(table: Table, name: string, idOf: Table): Field {
         hasDefault: true,
         nullable: false,
         readonly: true,
-        type: {} as Type,
+        type: {} as Prop,
     };
 }
 

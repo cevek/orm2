@@ -1,6 +1,6 @@
-import {Table, escapeField, escapeTable, sql, Ref, val} from './query.js';
-import {remove} from './remove.js';
-import {insert} from './insert.js';
+import {insert} from './insert';
+import {escapeField, escapeTable, Ref, Table, val} from './query';
+import {remove} from './remove';
 
 export {};
 type Hash = {[key: string]: unknown};
