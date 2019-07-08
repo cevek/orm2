@@ -1,6 +1,5 @@
 /// <reference path="./index.ts" />
 
-export {};
 type UserId = Id<'UserId'>;
 type PostId = Id<'PostId'>;
 type PostCommentId = Id<'PostCommentId'>;
