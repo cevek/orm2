@@ -1,4 +1,5 @@
 import {Prop} from 'ts-type-ast';
+import {Find, AllOperators} from './types';
 
 export type Ref = {from: Field; to: Field; collection: boolean; through: Field | undefined};
 export type Field = {
@@ -248,8 +249,6 @@ function extractFields(
     }
     return group;
 }
-
-type AllOperators = NumberOperators & StringOperators & BooleanOperators & DateOperators;
 
 function handleOperator(op: keyof Required<AllOperators>, operators: Required<AllOperators>, values: unknown[]) {
     switch (op) {

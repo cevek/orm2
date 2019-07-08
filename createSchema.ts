@@ -1,5 +1,5 @@
-import {getTypesFromTsFile, Type, Interface, ArrayType, Prop} from 'ts-type-ast';
-import {Table, Field} from './query';
+import {getTypesFromTsFile, Interface, Prop, Type} from 'ts-type-ast';
+import {Field, Table} from './query';
 
 // const tsFile = require.resolve('./exampleSchema.d.ts');
 // const res = createDBSchemaFromTsFile(tsFile);

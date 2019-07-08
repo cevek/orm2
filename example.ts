@@ -1,3 +1,5 @@
+import {Id, Create, Update, SelectConstraint, Find, SelectResult, PickId, DBQuery} from './types';
+
 export {};
 
 type PostId = Id<'PostId'>;
@@ -65,9 +67,9 @@ declare function insertPost(post: Create<Post>): {};
 declare function updatePost(post: Update<Post> & PickId<Post>): {};
 declare function deletePost(post: PickId<Post>): {};
 
-declare function findPost<T extends SelectConstraint<T, Post>, C extends {[key: string]: DBQuery}>(
-    data: Find<Post> | {select: T; selectCustom?: C},
-): SelectResult<T, C, Post>;
+declare function findPost<T extends SelectConstraint<T, Post>, CustomFields extends {[key: string]: DBQuery}>(
+    data: (Find<Post> & {customFields?: CustomFields}) | {select: T},
+): SelectResult<T, Post> & {[P in keyof CustomFields]: string | null};
 
 const userId = 1 as UserId;
 const db = {
@@ -136,7 +138,31 @@ updatePost({
     },
 });
 
-type G = SelectConstraint<{author: {name: 1; x: 1}}, Post>;
+type Foo<T, Entity> = Entity extends any[]
+    ? T extends {select: any}
+        ? Find<Entity[number], T['select']>
+        : never
+    : never;
+
+type GH = Foo<
+    {
+        select: {
+            text: 'foo';
+        };
+    },
+    Post['comments']
+>['select'];
+type G = SelectConstraint<
+    {
+        comments: {
+            select: {
+                text: 1;
+            };
+        };
+    },
+    Post
+>['comments']['select'];
+
 const res = findPost({
     select: {
         id: 0,
@@ -173,7 +199,7 @@ const res = findPost({
             limit: 10,
         },
     },
-    selectCustom: {
+    customFields: {
         score: {} as DBQuery,
     },
     where: {
@@ -197,6 +223,39 @@ const res = findPost({
     limit: 10,
 });
 
+// type Gg = SelectResult2<
+//     {
+//         text: number;
+//         author: {
+//             name: number;
+//         };
+//         subcomments: {
+//             select: {
+//                 author: {
+//                     name: number;
+//                 };
+//             };
+//         };
+//     },
+//     Comment
+// >;
+
+// type A = {
+//     b: B;
+// };
+// type B = {
+//     a: A;
+//     name: string;
+// };
+
+// // type FF<T, Entity> = {[P in Extract<keyof Entity, keyof T>]: FF<T[P], Entity[P]>};
+
+// // type Ggg = FF<{b: {a: {b: {a: {b: {title: string}}}}}}, A>;
+
+// var g!: Gg;
+// g.subcomments.map(sub => sub.author.name);
+// // g.map(x => x.subcomments)
+
 res.score;
 res.id;
 res.author.name;
@@ -205,4 +264,4 @@ res.comments;
 res.comments[0];
 res.comments.map(x => x.subcomments.map(sub => sub.author.name));
 res.comments[0].author.name;
-res.comments[0].xxx;
+// res.comments[0].xxx;

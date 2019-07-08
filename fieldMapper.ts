@@ -1,3 +1,5 @@
+import {Find} from './types';
+
 function createGraphQLMap<T extends {[P in keyof DB]?: any}, DB extends {[key: string]: Collection<any>}>(
     db: DB,
     obj: T,
@@ -19,6 +21,12 @@ function is<A, B>(
 ): B {
     return null!;
 }
+
+interface Post {
+    likes: User[];
+}
+
+interface User {}
 
 const db = {
     users: createCollection<User>(),
@@ -53,8 +61,6 @@ type ApiPost = {
     likes: {args: {limit: number}; result: ApiPostLike[]};
 };
 type ApiPostLike = {id: number};
-
-
 
 type Collection<T> = {
     type: T;

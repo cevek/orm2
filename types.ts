@@ -1,8 +1,22 @@
+export type QueryValue = DBValue | DBRaw | DBQuery | DBQueries;
+export type QueryFun = <T>(query: DBQuery) => Promise<T[]>;
+
+export class DBRaw {
+    constructor(public readonly raw: string) {}
+}
+
+export class DBQuery {
+    constructor(public readonly parts: ReadonlyArray<string>, public readonly values: ReadonlyArray<QueryValue>) {}
+}
+
+export class DBQueries {
+    constructor(public readonly queries: ReadonlyArray<DBQuery>, public readonly separator: DBQuery | undefined) {}
+}
+
 declare class OpaqueType<Name> {
     private type: Name;
 }
-type Opaque<T, Name extends string> = OpaqueType<Name> & T;
-type Id<Name extends string> = OpaqueType<Name> & number;
+export type Id<Name extends string> = OpaqueType<Name> & number;
 type Primitive = OpaqueType<any> | Date | number | string | boolean | null | undefined | symbol;
 
 type KeysWithObjects<T> = {[P in keyof T]: T[P] extends Primitive ? never : P}[keyof T];
@@ -12,7 +26,7 @@ type IfEquals<X, Y, A = X, B = never> = (<T>() => T extends X ? 1 : 2) extends (
 type WritableKeys<T> = {[P in keyof T]-?: IfEquals<{[Q in P]: T[P]}, {-readonly [Q in P]: T[P]}, P>}[keyof T];
 type ReadonlyKeys<T> = {[P in keyof T]-?: IfEquals<{[Q in P]: T[P]}, {-readonly [Q in P]: T[P]}, never, P>}[keyof T];
 
-type Create<
+export type Create<
     T,
     K1 extends keyof T = Exclude<KeysWithoutObjects<T>, ReadonlyKeys<T>>,
     K2 extends keyof T = Exclude<KeysWithObjects<T>, ReadonlyKeys<T>>
@@ -22,7 +36,7 @@ type Create<
     ? {[P in keyof T]: Create<T[number]>}
     : ({[P in K1]: Create<T[P]>} & {[P in K2]?: Create<T[P]>});
 
-type Update<T, K extends keyof T = Exclude<keyof T, 'id' | ReadonlyKeys<T>>> = T extends Primitive
+export type Update<T, K extends keyof T = Exclude<keyof T, 'id' | ReadonlyKeys<T>>> = T extends Primitive
     ? T
     : T extends any[]
     ? {
@@ -31,12 +45,10 @@ type Update<T, K extends keyof T = Exclude<keyof T, 'id' | ReadonlyKeys<T>>> = T
           delete?: PickId<T[number]>[];
       }
     : {[P in K]?: Update<T[P]>};
-type PickId<T> = T extends {id: any} ? {id: T['id']} : unknown;
+export type PickId<T> = T extends {id: any} ? {id: T['id']} : unknown;
 
-type CustomSelect = {[key: string]: DBQuery | CustomSelect | undefined};
-type Find<T, SelectT = T> = {
+export type Find<T, SelectT = T> = {
     select: Select<SelectT>;
-    selectCustom?: CustomSelect;
     where?: Filter<T>;
     order?: Sort<T>;
     limit?: number;
@@ -50,13 +62,11 @@ type GQLFind<T> = {
     offset?: number;
 };
 
-type SelectConstraint<T, Entity> = {
+export type SelectConstraint<T, Entity> = {
     [P in keyof T]: P extends keyof Entity
         ? (Entity[P] extends Primitive
               ? any
-              : Entity[P] extends any[]
-              ? SelectConstraintArray<T[P], Entity[P]>
-              : SelectConstraint<T[P], Entity[P]>)
+              : (Entity[P] extends any[] ? SelectConstraintArray<T[P], Entity[P]> : SelectConstraint<T[P], Entity[P]>))
         : never
 };
 type SelectConstraintArray<T, Entity> = Entity extends any[]
@@ -65,26 +75,28 @@ type SelectConstraintArray<T, Entity> = Entity extends any[]
         : never
     : never;
 
-type SelectResult<T, C, Entity, K extends keyof Entity = Extract<keyof Entity, keyof T>> = {
+export type SelectResult<T, Entity> = SelectResultK<T, Entity, Extract<keyof Entity, keyof T>>;
+type SelectResultK<T, Entity, K extends keyof Entity> = {
     [P in K]-?: Entity[P] extends Primitive
         ? Entity[P]
         : Entity[P] extends any[]
         ? SelectResultArr<P extends keyof T ? T[P] : never, Entity[P]>
-        : SelectResult<P extends keyof T ? T[P] : never, {}, Entity[P]>
-} &
-    {[P in keyof C]?: string};
-type SelectResultArr<T, Entity> = {
-    [P in keyof Entity]: SelectResult<
-        T extends {select: any} ? T['select'] : never,
-        T extends {selectCustom: any} ? T['selectCustom'] : {},
-        Entity[P]
-    >
+        : SelectResult<P extends keyof T ? T[P] : never, Entity[P]>
 };
-type Select<T> = {[P in keyof T]?: T[P] extends Primitive ? 0 : T[P] extends any[] ? Find<T[P][number]> : Select<T[P]>};
+
+type SelectResultArr<T, Entity> = {
+    [P in keyof Entity]: SelectResult<T extends {select: any} ? T['select'] : never, Entity[P]>
+};
+type Select<T> = {
+    [P in keyof T]?: T[P] extends Primitive ? any : T[P] extends any[] ? Find<T[P][number]> : Select<T[P]>
+};
 
 type Sort<T> = {[P in keyof T]?: T[P] extends Primitive ? 'asc' | 'desc' : T[P] extends any[] ? never : Sort<T[P]>};
 
 type NonUndefined<T> = T extends undefined ? never : T;
+
+export type DBValue = DBValueBase | DBValueBase[];
+export type DBValueBase = string | number | boolean | Date | undefined | null;
 
 type Filter<T> = {
     [P in keyof T]?: T[P] extends (Date | undefined)
@@ -100,22 +112,23 @@ type Filter<T> = {
         : Filter<T[P]>
 } & {OR?: Filter<T>[]; AND?: Filter<T>[]};
 
-type GQLFilter<T> = {
-    [P in keyof T]?: T[P] extends (Date | undefined)
-        ? DateOperators
-        : T[P] extends (string | undefined)
-        ? StringOperators
-        : T[P] extends (number | undefined)
-        ? NumberOperators
-        : T[P] extends (boolean | undefined)
-        ? BooleanOperators
-        : GQLFilter<T[P]>
-};
+// type GQLFilter<T> = {
+//     [P in keyof T]?: T[P] extends (Date | undefined)
+//         ? DateOperators
+//         : T[P] extends (string | undefined)
+//         ? StringOperators
+//         : T[P] extends (number | undefined)
+//         ? NumberOperators
+//         : T[P] extends (boolean | undefined)
+//         ? BooleanOperators
+//         : GQLFilter<T[P]>
+// };
 
-type DBQuery = {readonly q: string; readonly values: readonly unknown[]};
 type TransformOperator<Op, T> =
     | {[P in keyof Op]: Op[P] extends (any[] | undefined) ? TransformOperator<Op[P], T> : (T | DBQuery)}
     | T;
+
+export type AllOperators = NumberOperators & StringOperators & BooleanOperators & DateOperators;
 
 type NumberOperators = {
     eq?: number;
