@@ -1,4 +1,4 @@
-/// <reference path="./index.ts" />
+/// <reference path="./types.ts" />
 
 type UserId = Id<'UserId'>;
 type PostId = Id<'PostId'>;
