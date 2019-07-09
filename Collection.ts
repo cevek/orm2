@@ -1,47 +1,56 @@
-import {dbField, sql} from './sqlGenerator';
-import {DBRaw, QueryFun} from './types';
-import {Exception, ClientException} from './utils';
+import {insert} from './insert';
+import {find, Table} from './query';
+import {remove} from './remove';
+import {dbField} from './sqlGenerator';
+import {Create, DBQuery, DBRaw, Find, PickId, QueryFun, SelectConstraint, SelectResult, Update, Trx} from './types';
+import {update} from './update';
+import {Exception} from './utils';
 
+type FindQuery<T, CustomFields, Fields> = (Find<T> & {customFields?: CustomFields}) | {select: Fields};
 export class Collection<T> {
     name: DBRaw;
-    fields: {[P in keyof T]: DBRaw};
-    constructor(public collectionName: string, private query: QueryFun) {
+    constructor(
+        public collectionName: string,
+        private table: Table,
+        private query: QueryFun,
+        private transaction?: Trx,
+    ) {
         this.name = dbField(collectionName);
-        this.fields = new Proxy({} as this['fields'], {
-            get: (_, key: string) => sql`${this.name}.${dbField(key)}`,
-        });
     }
-    async findById() {
-        const row = await this.findByIdOrNull();
+    async findOne<Fields extends SelectConstraint<Fields, T>, CustomFields extends {[key: string]: DBQuery}>(
+        data: FindQuery<T, CustomFields, Fields>,
+    ) {
+        const row = await this.findOneOrNull(data);
         if (row === null) throw new Exception('EntityNotFound', {collection: this.collectionName});
         return row;
     }
-    async findByIdClient() {
-        const row = await this.findByIdOrNull();
-        if (row === null) throw new ClientException('EntityNotFound', {collection: this.collectionName});
-        return row;
+    async findAll<Fields extends SelectConstraint<Fields, T>, CustomFields extends {[key: string]: DBQuery}>(
+        data: FindQuery<T, CustomFields, Fields>,
+    ) {
+        const {result} = (await find(this.query, this.table, data as {select: any})) as {
+            result: (SelectResult<Fields, T> & {[P in keyof CustomFields]: string | null})[];
+        };
+        return result;
     }
-    async findOne() {
-        const row = await this.findOneOrNull();
-        if (row === null) throw new Exception('EntityNotFound', {collection: this.collectionName});
-        return row;
-    }
-    async findOneClient() {
-        const row = await this.findOneOrNull();
-        if (row === null) throw new ClientException('EntityNotFound', {collection: this.collectionName});
-        return row;
-    }
-    async findAll() {
-        return this.query(sql``);
-    }
-    async findByIdOrNull() {
-        return this.findOneOrNull();
-    }
-    async findOneOrNull() {
-        const rows = await this.findAll();
+    async findOneOrNull<Fields extends SelectConstraint<Fields, T>, CustomFields extends {[key: string]: DBQuery}>(
+        data: FindQuery<T, CustomFields, Fields>,
+    ) {
+        const rows = await this.findAll(data);
         return rows.length > 0 ? rows[0] : null;
     }
-    async update() {}
-    async remove() {}
-    async create() {}
+    async update(data: Update<T> & PickId<T>) {
+        if (this.transaction !== undefined) {
+            return this.transaction(() => update(this.query, this.table, data as {}));
+        }
+        return update(this.query, this.table, data as {});
+    }
+    async remove(data: PickId<T>) {
+        return remove(this.query, this.table, data as {});
+    }
+    async create(data: Create<T>, params?: {noErrorIfConflict?: DBRaw | boolean}) {
+        if (this.transaction !== undefined) {
+            return this.transaction(() => insert(this.query, this.table, [data as {}], params));
+        }
+        return insert(this.query, this.table, [data as {}], params);
+    }
 }

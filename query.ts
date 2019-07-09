@@ -1,5 +1,5 @@
 import {Prop} from 'ts-type-ast';
-import {Find, AllOperators} from './types';
+import {Find, AllOperators, QueryFun} from './types';
 
 export type Ref = {from: Field; to: Field; collection: boolean; through: Field | undefined};
 export type Field = {
@@ -36,13 +36,18 @@ type Group = {
     items: (Group | ExtractField)[];
 };
 
-export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}, parent?: ParentList) {
+export async function find(
+    query: QueryFun,
+    table: Table,
+    q: Find<unknown>,
+    parent?: ParentList,
+) {
     const tables = new Map<string, {table: Table; a: Field; b: Field}>();
     const subQueries = new Map<string, SubQuery>();
     const selectFields = extractFields(table, q.select, subQueries, tables).items as ExtractField[];
     const conditionGroup = extractFields(table, q.where, subQueries, tables);
     const orders = extractFields(table, q.order, subQueries, tables).items as ExtractField[];
-    const values: unknown[] = [];
+    const values: DBValue[] = [];
 
     let parentIdFieldIdx = -1;
     if (parent !== undefined) {
@@ -138,9 +143,9 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
         sql += ` OFFSET ${val(values, q.offset)}`;
     }
 
-    console.log({selectFields, conditionGroup, orders, tables, subQueries, sql, values});
+    // console.log({selectFields, conditionGroup, orders, tables, subQueries, sql, values});
 
-    const rawItems: unknown[][] = data[table.name];
+    const rawItems: unknown[][] = await query(sql, values);
 
     const itemsMap = new Map<number, {[key: string]: unknown[]}>();
     const result = rawItems.map(item => {
@@ -173,10 +178,10 @@ export function query(table: Table, q: Find<unknown>, data: {[key: string]: any}
                 map: itemsMap,
                 ref: subQuery.ref,
             };
-            query(
+            await find(
+                query,
                 subQuery.ref.through ? subQuery.ref.through.ref!.to.table : subQuery.ref.to.table,
                 subQuery.find,
-                data,
                 parent,
             );
         }

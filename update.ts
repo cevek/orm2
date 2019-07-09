@@ -1,11 +1,12 @@
 import {insert} from './insert';
 import {escapeField, escapeTable, Ref, Table, val} from './query';
 import {remove} from './remove';
+import {QueryFun, DBValue} from './types';
 
 export {};
 type Hash = {[key: string]: unknown};
-export function update(table: Table, data: Hash, idFrom?: {ref: Ref; id: number}) {
-    const values: unknown[] = [];
+export async function update(query: QueryFun, table: Table, data: Hash, idFrom?: {ref: Ref; id: number}) {
+    const values: DBValue[] = [];
     let sqlQuery = `UPDATE ${escapeTable(table)} SET `;
     for (const key in data) {
         const value = data[key];
@@ -20,7 +21,8 @@ export function update(table: Table, data: Hash, idFrom?: {ref: Ref; id: number}
                     const {from, to} = field.ref;
 
                     if (createList !== undefined) {
-                        insert(
+                        await insert(
+                            query,
                             refTable,
                             (createList as Hash[]).map(val => ({
                                 ...val,
@@ -30,19 +32,20 @@ export function update(table: Table, data: Hash, idFrom?: {ref: Ref; id: number}
                     }
                     if (updateList !== undefined) {
                         for (const item of updateList as Hash[]) {
-                            update(refTable, item);
+                            await update(query, refTable, item);
                         }
                     }
                     if (removeList !== undefined) {
                         for (const item of removeList as Hash[]) {
-                            remove(field.ref.to.table, item);
+                            await remove(query, field.ref.to.table, item);
                         }
                     }
                 } else {
                     const {through, to} = field.ref;
                     const refTable = through.ref!.to.table;
                     if (createList !== undefined) {
-                        insert(
+                        await insert(
+                            query,
                             to.table,
                             (createList as Hash[]).map(val => ({
                                 [to.name]: data.id,
@@ -52,17 +55,17 @@ export function update(table: Table, data: Hash, idFrom?: {ref: Ref; id: number}
                     }
                     if (updateList !== undefined) {
                         for (const item of updateList as Hash[]) {
-                            update(refTable, item);
+                            await update(query, refTable, item);
                         }
                     }
                     if (removeList !== undefined) {
                         for (const item of removeList as Hash[]) {
-                            remove(refTable, item);
+                            await remove(query, refTable, item);
                         }
                     }
                 }
             } else {
-                update(field.ref.to.table, value as Hash, {ref: field.ref, id: data.id as number});
+                await update(query, field.ref.to.table, value as Hash, {ref: field.ref, id: data.id as number});
             }
             continue;
         }
@@ -79,5 +82,5 @@ export function update(table: Table, data: Hash, idFrom?: {ref: Ref; id: number}
     } else {
         sqlQuery += `${escapeField(table.id)}=${val(values, data.id)}`;
     }
-    console.log(sqlQuery, values);
+    return query(sqlQuery, values);
 }

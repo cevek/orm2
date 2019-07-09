@@ -1,9 +1,8 @@
-import {Table, escapeField, escapeTable, val} from './query';
-export {};
+import {escapeField, escapeTable, Table, val} from './query';
+import {DBValue, QueryFun} from './types';
 type Hash = {[key: string]: unknown};
 
-export function remove(table: Table, data: Hash) {
-    const values: unknown[] = [];
-    const sql = `DELETE FROM ${escapeTable(table)} WHERE ${escapeField(table.id)}=${val(values, data.id)}`;
-    console.log(sql, values);
+export function remove(query: QueryFun, table: Table, data: Hash) {
+    const values: DBValue[] = [];
+    return query(`DELETE FROM ${escapeTable(table)} WHERE ${escapeField(table.id)}=${val(values, data.id)}`, values);
 }

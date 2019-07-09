@@ -1,6 +1,6 @@
 import {createDBSchemaFromTsFile} from '../createSchema';
 import {insert} from '../insert';
-import {query} from '../query';
+import {find} from '../query';
 import {update} from '../update';
 
 export {};
@@ -133,7 +133,7 @@ const data = {
     PostLike: [['Vova', 2], ['Vasya', 2]],
     Post: [['Hello', 'Alex', 2]],
 };
-const res = query(
+const res = find(
     Post,
     {
         select: {

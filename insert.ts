@@ -1,17 +1,19 @@
 import {Table, escapeTable, escapeField, DBRaw, Field, val} from './query';
+import {QueryFun, DBValue} from './types';
 
 export {};
 
 type Hash = {[key: string]: unknown};
-export function insert(
+export async function insert(
+    query: QueryFun,
     table: Table,
     dataArr: Hash[],
-    params?: {noErrorIfConflict?: Field | boolean},
+    params?: {noErrorIfConflict?: DBRaw | boolean},
     parentIds = new Map<Table, number>(),
 ) {
     let sql = '';
     const afterInsert: {table: Table; data: Hash[]}[] = [];
-    const values: unknown[] = [];
+    const values: DBValue[] = [];
     for (const data of dataArr) {
         let namesSql = '';
         let valuesSql = '';
@@ -39,7 +41,7 @@ export function insert(
                     }
                     continue;
                 } else {
-                    value = insert(field.ref.to.table, [value as Hash], undefined, parentIds);
+                    value = await insert(query, field.ref.to.table, [value as Hash], undefined, parentIds);
                     field = field.ref.from;
                 }
             }
@@ -70,14 +72,14 @@ export function insert(
         }
         const tbl = escapeTable(table);
         const idField = escapeField(table.id);
-        sql += `INSERT INTO ${tbl} (${namesSql}) VALUES (${valuesSql})${onConflictFields} RETURNING ${idField};
-`;
+        sql += `INSERT INTO ${tbl} (${namesSql}) VALUES (${valuesSql})${onConflictFields} RETURNING ${idField};`;
     }
-    console.log(sql, values);
-    const id = table.name as any;
+    // console.log(sql, values);
+    const id = (await query<{id: number}>(sql, values))[0].id;
     parentIds.set(table, id);
     for (const item of afterInsert) {
-        insert(item.table, item.data, undefined, parentIds);
+        // todo: parallel
+        await insert(query, item.table, item.data, undefined, parentIds);
     }
     return id;
 }

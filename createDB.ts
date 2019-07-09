@@ -1,7 +1,8 @@
 import {Collection} from './Collection';
 import {sqlGenerator} from './sqlGenerator';
-import {DBValue, QueryFun, DBQuery} from './types';
+import {DBValue, DBQuery, QueryFun, Trx} from './types';
 import {maybe, Exception} from './utils';
+import {Table} from './query';
 
 type Collections<Schema> = {[P in keyof Schema]: Collection<Schema[P]>};
 
@@ -18,17 +19,17 @@ type PoolClient = {
     query: (q: string, values?: unknown[]) => Promise<{rows: unknown[]; command: string}>;
 };
 
-export async function createDB<Schema>(pool: Pool) {
-    const doQuery = doQueryFactory(() => pool.connect(), true);
-    const db = createDBProxy<Schema>(doQuery);
-    db.transaction = async (trx, rollback) => {
+export async function createDB<Schema>(pool: Pool, schema: Map<string, Table>) {
+    const query = queryFactory(() => pool.connect(), true);
+    return _createDB<Schema>(query, schema, async (content, rollback) => {
         const trxClient = await pool.connect();
-        const query = doQueryFactory(async () => trxClient, false);
+        const query = queryFactory(async () => trxClient, false);
         try {
-            const trxDB = createDBProxy<Schema>(query);
+            const trxDB = _createDB<Schema>(query, schema, undefined);
             await trxClient.query('BEGIN');
-            await trx(trxDB);
+            const res = await content(trxDB);
             await trxClient.query('COMMIT');
+            return res;
         } catch (e) {
             await trxClient.query('ROLLBACK');
             if (rollback !== undefined) {
@@ -38,39 +39,28 @@ export async function createDB<Schema>(pool: Pool) {
         } finally {
             trxClient.release();
         }
-    };
-    return db;
-}
-
-function createDBProxy<Schema>(query: QueryFun) {
-    type CollectionType = Schema[keyof Schema];
-    const db = {query, transaction: {}} as DB<Schema>;
-    return new Proxy(db, {
-        get(_, key: keyof Schema) {
-            const collection = maybe(db[key]);
-            if (collection === undefined) {
-                const newCollection = new Collection<CollectionType>(key as string, query);
-                (db as Collections<Schema>)[key] = newCollection;
-                return newCollection;
-            }
-            return collection;
-        },
     });
 }
 
-function doQueryFactory(getClient: () => Promise<PoolClient>, release: boolean): QueryFun {
-    return async <T>(query: DBQuery) => {
+function _createDB<Schema>(query: QueryFun, schema: Map<string, Table>, transaction?: Trx) {
+    const db = {query, transaction} as {};
+    for (const [tableName, table] of schema) {
+        (db as {[key: string]: Collection<unknown>})[tableName] = new Collection(tableName, table, query, transaction);
+    }
+    return db as DB<Schema>;
+}
+
+function queryFactory(getClient: () => Promise<PoolClient>, release: boolean): QueryFun {
+    return async <T>(sql: string, values?: DBValue[]) => {
         const client = await getClient();
-        const values: DBValue[] = [];
-        const sqlQuery = sqlGenerator(query, values);
         let res;
         try {
-            res = await client.query(sqlQuery, values);
+            res = await client.query(sql, values);
             if (release) {
                 client.release();
             }
         } catch (err) {
-            throw new Exception('DB query error', {query: sqlQuery, values, message: (err as Error).message});
+            throw new Exception('DB query error', {sql, values, message: (err as Error).message});
         }
         return res.rows as T[];
     };
