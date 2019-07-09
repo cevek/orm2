@@ -1,4 +1,4 @@
-import {Id, Create, Update, SelectConstraint, Find, SelectResult, PickId, DBQuery} from './types';
+import {Id, Create, Update, SelectConstraint, Find, SelectResult, PickId, DBQuery} from '../types';
 
 export {};
 

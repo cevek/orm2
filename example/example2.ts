@@ -1,7 +1,7 @@
-import {createDBSchemaFromTsFile} from './createSchema';
-import {insert} from './insert';
-import {query} from './query';
-import {update} from './update';
+import {createDBSchemaFromTsFile} from '../createSchema';
+import {insert} from '../insert';
+import {query} from '../query';
+import {update} from '../update';
 
 export {};
 

@@ -1,6 +1,4 @@
-/// <reference path="./types.ts" />
-
-import { Id } from "./types";
+import { Id } from "../types";
 
 type UserId = Id<'UserId'>;
 type PostId = Id<'PostId'>;
