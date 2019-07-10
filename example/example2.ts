@@ -2,6 +2,7 @@ import {createDBSchemaFromTsFile} from '../createSchema';
 import {insert} from '../insert';
 import {find} from '../query';
 import {update} from '../update';
+import { QueryFun } from '../types';
 
 export {};
 
@@ -128,12 +129,15 @@ const tables = createDBSchemaFromTsFile(tsFile);
 
 const Post = tables.get('Post')!;
 
+declare const query: QueryFun;
+
 const data = {
     Comment: [['Ivan', 2], ['John', 2]],
     PostLike: [['Vova', 2], ['Vasya', 2]],
     Post: [['Hello', 'Alex', 2]],
 };
 const res = find(
+    query,
     Post,
     {
         select: {
@@ -195,11 +199,11 @@ const res = find(
             },
         },
     },
-    data,
+    // data,
 );
 console.log(res);
 
-insert(Post, [
+insert(query, Post, [
     {
         title: 'Hello',
         authorId: 'auto',
@@ -211,7 +215,7 @@ insert(Post, [
     },
 ]);
 
-update(Post, {
+update(query, Post, {
     id: 1,
     title: 'Hello',
     author: {

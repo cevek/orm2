@@ -1,8 +1,11 @@
-import { DB } from "./createDB";
+import {DB} from './createDB';
 
 export type QueryValue = DBValue | DBRaw | DBQuery | DBQueries;
-export type QueryFun = <T>(sql: string, values?: DBValue[]) => Promise<T[]>;
-export type Trx<Schema = unknown> = <T>(content: (db: DB<Schema>) => Promise<T>, rollback?: () => void | Promise<void>) => Promise<T>;
+export type QueryFun = (<T>(query: DBQuery) => Promise<T[]>) & (<T>(sql: string, values?: DBValue[]) => Promise<T[]>);
+export type Trx<Schema = unknown> = <T>(
+    content: (db: DB<Schema>) => Promise<T>,
+    rollback?: () => void | Promise<void>,
+) => Promise<T>;
 //trx: unknown, rollback: () => void
 
 export class DBRaw {

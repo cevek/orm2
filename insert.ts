@@ -66,8 +66,10 @@ export async function insert(
         if (params !== undefined) {
             const {noErrorIfConflict} = params;
             if (noErrorIfConflict === true || typeof noErrorIfConflict === 'object') {
-                const f = noErrorIfConflict === true ? '' : escapeField(noErrorIfConflict);
-                onConflictFields = ` ON CONFLICT ${f} DO NOTHING`;
+                // todo:
+                // const f = noErrorIfConflict === true ? '' : escapeField(noErrorIfConflict);
+                // ${f}
+                onConflictFields = ` ON CONFLICT DO NOTHING`;
             }
         }
         const tbl = escapeTable(table);

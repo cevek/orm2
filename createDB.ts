@@ -51,11 +51,16 @@ function _createDB<Schema>(query: QueryFun, schema: Map<string, Table>, transact
 }
 
 function queryFactory(getClient: () => Promise<PoolClient>, release: boolean): QueryFun {
-    return async <T>(sql: string, values?: DBValue[]) => {
+    return async <T>(sql: string | DBQuery, values?: DBValue[]) => {
         const client = await getClient();
         let res;
         try {
-            res = await client.query(sql, values);
+            if (sql instanceof DBQuery) {
+                values = [];
+                res = await client.query(sqlGenerator(sql, values), values);
+            } else {
+                res = await client.query(sql, values);
+            }
             if (release) {
                 client.release();
             }
